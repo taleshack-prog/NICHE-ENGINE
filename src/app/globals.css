@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+/* ───────────────────────────────────────────────────────────────
+   Tema dark-first. Tailwind v4: tokens declarados em @theme viram
+   utilitários (bg-superficie, text-suave, …) automaticamente.
+   ─────────────────────────────────────────────────────────────── */
+
+@theme {
+  --color-fundo: oklch(0.16 0.015 265);
+  --color-superficie: oklch(0.21 0.018 265);
+  --color-superficie-2: oklch(0.26 0.02 265);
+  --color-borda: oklch(0.32 0.02 265);
+  --color-texto: oklch(0.96 0.005 265);
+  --color-suave: oklch(0.72 0.015 265);
+  --color-tenue: oklch(0.56 0.015 265);
+
+  --color-acento: oklch(0.72 0.16 225);
+  --color-acento-forte: oklch(0.63 0.18 225);
+
+  --color-ok: oklch(0.75 0.15 155);
+  --color-alerta: oklch(0.8 0.15 85);
+  --color-erro: oklch(0.65 0.2 25);
+  --color-roxo: oklch(0.7 0.16 300);
+
+  --radius-card: 0.75rem;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-borda);
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-fundo);
+    color: var(--color-texto);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background-color: color-mix(in oklab, var(--color-acento) 35%, transparent);
+  }
+
+  /* Scrollbar discreta — o kanban e o calendário rolam muito. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-borda);
+    border-radius: 9999px;
+    border: 2px solid var(--color-fundo);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-tenue);
+  }
+
+  /* Foco visível sempre: o dashboard é operado com teclado no dia a dia. */
+  :focus-visible {
+    outline: 2px solid var(--color-acento);
+    outline-offset: 2px;
+  }
+}
+
+@utility card-base {
+  background-color: var(--color-superficie);
+  border: 1px solid var(--color-borda);
+  border-radius: var(--radius-card);
+}
+
+/* Alvo de drop do kanban/calendário durante o arraste. */
+.drop-ativo {
+  outline: 2px dashed var(--color-acento);
+  outline-offset: -4px;
+  background-color: color-mix(in oklab, var(--color-acento) 8%, transparent);
+}
+
+.arrastando {
+  opacity: 0.45;
+}
