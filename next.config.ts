@@ -1,7 +1,17 @@
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { NextConfig } from "next";
+
+// Raiz explícita do Turbopack. Sem isto o Next sobe a árvore de diretórios
+// procurando um lockfile e encontra o de ~/Downloads, imprimindo
+// "ignored package-lock.json ... outside the current Git repository" a cada dev.
+const raiz = dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  turbopack: {
+    root: raiz,
+  },
   typescript: {
     // Erros de tipo devem quebrar o build. Nunca ligar ignoreBuildErrors.
     ignoreBuildErrors: false,
