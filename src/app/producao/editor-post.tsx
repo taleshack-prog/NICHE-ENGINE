@@ -1,0 +1,563 @@
+"use client";
+
+import * as React from "react";
+import {
+  CalendarClock,
+  Film,
+  Image as ImageIcon,
+  Send,
+  Sparkles,
+  Trash2,
+  Wand2,
+  X,
+} from "lucide-react";
+import { toast } from "sonner";
+import {
+  agendarPost,
+  aplicarRoteiro,
+  deletePost,
+  gerarCopy,
+  gerarRoteiro,
+  publicarPost,
+  updatePost,
+} from "@/actions/posts";
+import { anexarMidiaUrl, gerarMidia, removerMidia } from "@/actions/midia";
+import { Botao } from "@/components/ui/botao";
+import { AreaTexto, Campo, Input, Selecao } from "@/components/ui/campos";
+import { Selo } from "@/components/ui/selo";
+import { useAcao } from "@/components/ui/use-acao";
+import { FORMATOS, FORMATO_LABEL, type Formato } from "@/lib/domain";
+import type { VariacaoRoteiro } from "@/lib/prompts";
+import type { PostProducao } from "@/lib/queries";
+import { contarPalavras } from "@/lib/utils";
+
+type TemplateOpcao = { id: string; padrao: string; gancho: string };
+
+export function EditorPost({
+  post,
+  templates,
+  iaDisponivel,
+  falDisponivel,
+  metaDisponivel,
+  aoFechar,
+  aoAtualizar,
+}: {
+  post: PostProducao;
+  templates: TemplateOpcao[];
+  iaDisponivel: boolean;
+  falDisponivel: boolean;
+  metaDisponivel: boolean;
+  aoFechar: () => void;
+  aoAtualizar: () => void;
+}) {
+  const [titulo, setTitulo] = React.useState(post.titulo);
+  const [formato, setFormato] = React.useState(post.formato);
+  const [roteiro, setRoteiro] = React.useState(post.roteiro ?? "");
+  const [legenda, setLegenda] = React.useState(post.legenda ?? "");
+  const [coverText, setCoverText] = React.useState(post.coverText ?? "");
+  const [hashtags, setHashtags] = React.useState(post.hashtagsLista.join(" "));
+  const [templateId, setTemplateId] = React.useState(post.templateId ?? "");
+  const [variacoes, setVariacoes] = React.useState<VariacaoRoteiro[] | null>(null);
+  const [tema, setTema] = React.useState(post.titulo);
+
+  const salvar = useAcao();
+  const ia = useAcao();
+  const midia = useAcao();
+  const publicacao = useAcao();
+
+  // Esc fecha o painel — atalho esperado num editor lateral.
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") aoFechar();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [aoFechar]);
+
+  const primeiraLinhaLegenda = legenda.split("\n")[0] ?? "";
+  const palavrasReGancho = contarPalavras(primeiraLinhaLegenda);
+  const qtdHashtags = hashtags.split(/[\s,]+/).filter(Boolean).length;
+  const palavrasCover = contarPalavras(coverText);
+
+  async function salvarCampos() {
+    await salvar.executar(
+      () =>
+        updatePost({
+          id: post.id,
+          titulo,
+          formato,
+          roteiro: roteiro || null,
+          legenda: legenda || null,
+          coverText: coverText || null,
+          hashtags,
+          templateId: templateId || null,
+        }),
+      { sucesso: "Post salvo.", aoConcluir: aoAtualizar },
+    );
+  }
+
+  async function gerar() {
+    const r = await ia.executar(() => gerarRoteiro({ postId: post.id, tema }));
+    if (r && typeof r === "object" && "variacoes" in r) {
+      setVariacoes((r as { variacoes: VariacaoRoteiro[] }).variacoes);
+      toast.success("3 variações geradas. Escolha uma.");
+    }
+  }
+
+  async function usarVariacao(v: VariacaoRoteiro) {
+    await ia.executar(
+      () =>
+        aplicarRoteiro({
+          postId: post.id,
+          gancho: v.gancho,
+          corpo: v.corpo,
+          loop: v.loop,
+          cta: v.cta,
+        }),
+      { sucesso: "Roteiro aplicado." },
+    );
+    setRoteiro([v.gancho, "", v.corpo, "", v.loop, "", v.cta].join("\n"));
+    setVariacoes(null);
+    aoAtualizar();
+  }
+
+  async function copy() {
+    const r = await ia.executar(() => gerarCopy({ postId: post.id }), {
+      sucesso: "Copy gerada.",
+    });
+    if (r && typeof r === "object" && "legenda" in r) {
+      const c = r as { legenda: string; hashtags: string[]; coverText: string };
+      setLegenda(c.legenda);
+      setHashtags(c.hashtags.join(" "));
+      setCoverText(c.coverText);
+      aoAtualizar();
+    }
+  }
+
+  async function gerarImagem() {
+    await midia.executar(() => gerarMidia({ postId: post.id, tipo: "imagem" }), {
+      sucesso: "Imagens anexadas.",
+      aoConcluir: aoAtualizar,
+    });
+  }
+
+  async function gerarVideoClique() {
+    toast.info("Vídeo passa por fila do fal.ai — pode levar alguns minutos.");
+    await midia.executar(() => gerarMidia({ postId: post.id, tipo: "video" }), {
+      sucesso: "Vídeo anexado.",
+      aoConcluir: aoAtualizar,
+    });
+  }
+
+  async function anexarUrl(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    await midia.executar(
+      () =>
+        anexarMidiaUrl({
+          postId: post.id,
+          tipo: fd.get("tipo"),
+          url: fd.get("url"),
+        }),
+      { sucesso: "Mídia anexada.", aoConcluir: aoAtualizar },
+    );
+    e.currentTarget.reset();
+  }
+
+  async function agendar(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const valor = String(fd.get("data") ?? "");
+    if (!valor) return;
+    await salvar.executar(() => agendarPost({ id: post.id, data: valor }), {
+      sucesso: "Post agendado.",
+      aoConcluir: aoAtualizar,
+    });
+  }
+
+  async function publicar() {
+    if (!window.confirm("Publicar agora no Instagram via Graph API?")) return;
+    await publicacao.executar(() => publicarPost({ id: post.id }), {
+      sucesso: "Publicado.",
+      aoConcluir: aoAtualizar,
+    });
+  }
+
+  async function excluir() {
+    if (!window.confirm(`Excluir o post "${post.titulo}"? Ação irreversível.`)) return;
+    const r = await salvar.executar(() => deletePost({ id: post.id }), {
+      sucesso: "Post excluído.",
+    });
+    if (r !== null) {
+      aoFechar();
+      aoAtualizar();
+    }
+  }
+
+  const ocupado = salvar.carregando || ia.carregando || midia.carregando || publicacao.carregando;
+
+  return (
+    <>
+      <div
+        role="presentation"
+        onClick={aoFechar}
+        className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+      />
+      <aside
+        aria-label={`Editor do post ${post.titulo}`}
+        className="fixed right-0 top-0 z-50 flex h-dvh w-full max-w-xl flex-col border-l border-borda bg-superficie shadow-2xl"
+      >
+        <header className="flex items-start justify-between gap-3 border-b border-borda p-4">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">{post.titulo}</p>
+            <p className="mt-0.5 text-[11px] text-tenue">
+              {post.nicho} · {post.status}
+              {post.igPostId ? ` · IG ${post.igPostId}` : ""}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={aoFechar}
+            aria-label="Fechar editor"
+            className="rounded-md p-1 text-tenue hover:bg-superficie-2 hover:text-texto"
+          >
+            <X className="size-4" />
+          </button>
+        </header>
+
+        <div className="flex-1 space-y-5 overflow-y-auto p-4">
+          {/* ── Identificação ── */}
+          <section className="space-y-3">
+            <Campo rotulo="Título" htmlFor="e-titulo">
+              <Input id="e-titulo" value={titulo} onChange={(e) => setTitulo(e.target.value)} />
+            </Campo>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Campo rotulo="Formato" htmlFor="e-formato">
+                <Selecao
+                  id="e-formato"
+                  value={formato}
+                  onChange={(e) => setFormato(e.target.value)}
+                >
+                  {FORMATOS.map((f) => (
+                    <option key={f} value={f}>
+                      {FORMATO_LABEL[f as Formato]}
+                    </option>
+                  ))}
+                </Selecao>
+              </Campo>
+              <Campo rotulo="Template" htmlFor="e-template">
+                <Selecao
+                  id="e-template"
+                  value={templateId}
+                  onChange={(e) => setTemplateId(e.target.value)}
+                >
+                  <option value="">Sem template</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.padrao}
+                    </option>
+                  ))}
+                </Selecao>
+              </Campo>
+            </div>
+          </section>
+
+          {/* ── Roteiro ── */}
+          <section className="space-y-2 border-t border-borda pt-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-suave">
+                Roteiro
+              </h3>
+              <span className="text-[11px] text-tenue">
+                gancho → corpo → loop → CTA
+              </span>
+            </div>
+
+            <div className="flex gap-2">
+              <Input
+                value={tema}
+                onChange={(e) => setTema(e.target.value)}
+                placeholder="tema para a IA"
+                className="h-8 text-xs"
+              />
+              <Botao
+                variante="contorno"
+                tamanho="sm"
+                onClick={gerar}
+                disabled={ocupado || !iaDisponivel}
+                title={iaDisponivel ? "Gerar 3 variações" : "ANTHROPIC_API_KEY ausente"}
+              >
+                <Wand2 />
+                {ia.carregando ? "Gerando…" : "3 variações"}
+              </Botao>
+            </div>
+
+            {variacoes ? (
+              <ul className="space-y-2">
+                {variacoes.map((v, i) => (
+                  <li
+                    key={`${v.templateUsado}-${i}`}
+                    className="rounded-lg border border-borda bg-superficie-2 p-3"
+                  >
+                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                      <Selo tom="acento">{v.templateUsado}</Selo>
+                      <span className="text-[11px] text-tenue">
+                        ~{v.duracaoEstimadaSeg}s
+                      </span>
+                    </div>
+                    <p className="text-sm font-medium leading-snug">{v.gancho}</p>
+                    <p className="mt-1 line-clamp-3 text-[11px] text-tenue">{v.corpo}</p>
+                    <Botao
+                      variante="primario"
+                      tamanho="sm"
+                      className="mt-2"
+                      onClick={() => usarVariacao(v)}
+                      disabled={ocupado}
+                    >
+                      Usar esta
+                    </Botao>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+
+            <AreaTexto
+              rows={8}
+              value={roteiro}
+              onChange={(e) => setRoteiro(e.target.value)}
+              placeholder="Gancho na primeira linha…"
+              className="font-mono text-xs"
+            />
+          </section>
+
+          {/* ── Copy ── */}
+          <section className="space-y-3 border-t border-borda pt-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-suave">Copy</h3>
+              <Botao
+                variante="contorno"
+                tamanho="sm"
+                onClick={copy}
+                disabled={ocupado || !iaDisponivel}
+              >
+                <Sparkles />
+                Gerar copy
+              </Botao>
+            </div>
+
+            <Campo
+              rotulo={`Legenda — re-gancho: ${palavrasReGancho}/12 palavras`}
+              htmlFor="e-legenda"
+              erro={palavrasReGancho > 12 ? ["A primeira linha passa de 12 palavras"] : undefined}
+            >
+              <AreaTexto
+                id="e-legenda"
+                rows={6}
+                value={legenda}
+                onChange={(e) => setLegenda(e.target.value)}
+                placeholder="Primeira linha = re-gancho, funciona sozinha no feed"
+              />
+            </Campo>
+
+            <Campo
+              rotulo={`Hashtags — ${qtdHashtags} (alvo 8 a 12)`}
+              htmlFor="e-hashtags"
+              erro={
+                qtdHashtags > 0 && (qtdHashtags < 8 || qtdHashtags > 12)
+                  ? ["Fora da faixa 8-12"]
+                  : undefined
+              }
+              dica="3 amplas · 5 de nicho · 2 long-tail. Sem #fyp, #viral, #explore."
+            >
+              <AreaTexto
+                id="e-hashtags"
+                rows={3}
+                value={hashtags}
+                onChange={(e) => setHashtags(e.target.value)}
+                className="font-mono text-xs"
+              />
+            </Campo>
+
+            <Campo
+              rotulo={`Cover text — ${palavrasCover}/6 palavras`}
+              htmlFor="e-cover"
+              erro={palavrasCover > 6 ? ["Passa de 6 palavras"] : undefined}
+            >
+              <Input
+                id="e-cover"
+                value={coverText}
+                onChange={(e) => setCoverText(e.target.value.toUpperCase())}
+                className="uppercase"
+              />
+            </Campo>
+          </section>
+
+          {/* ── Mídia ── */}
+          <section className="space-y-3 border-t border-borda pt-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-suave">
+                Mídia ({post.midiaLista.length})
+              </h3>
+              <div className="flex gap-2">
+                <Botao
+                  variante="contorno"
+                  tamanho="sm"
+                  onClick={gerarImagem}
+                  disabled={ocupado || !falDisponivel}
+                  title={falDisponivel ? "Gerar imagens (FLUX)" : "FAL_KEY ausente"}
+                >
+                  <ImageIcon />
+                  Fal
+                </Botao>
+                <Botao
+                  variante="contorno"
+                  tamanho="sm"
+                  onClick={gerarVideoClique}
+                  disabled={ocupado || !falDisponivel}
+                  title={falDisponivel ? "Image-to-video (Kling)" : "FAL_KEY ausente"}
+                >
+                  <Film />
+                  Kling
+                </Botao>
+              </div>
+            </div>
+
+            {post.midiaLista.length > 0 ? (
+              <ul className="grid grid-cols-3 gap-2">
+                {post.midiaLista.map((m) => (
+                  <li
+                    key={m.url}
+                    className="group relative overflow-hidden rounded-md border border-borda bg-superficie-2"
+                  >
+                    {/* next/image exigiria allowlist de domínios; as URLs vêm do
+                        fal.ai e de onde o usuário colar. <img> é o certo aqui. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={m.url}
+                      alt={m.tipo}
+                      className="aspect-square w-full object-cover"
+                      loading="lazy"
+                    />
+                    <span className="absolute left-1 top-1 rounded bg-black/70 px-1 text-[9px] uppercase">
+                      {m.tipo}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label="Remover mídia"
+                      disabled={ocupado}
+                      onClick={() =>
+                        midia.executar(() => removerMidia({ postId: post.id, url: m.url }), {
+                          aoConcluir: aoAtualizar,
+                        })
+                      }
+                      className="absolute right-1 top-1 rounded bg-black/70 p-0.5 text-erro opacity-0 transition-opacity group-hover:opacity-100"
+                    >
+                      <Trash2 className="size-3" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[11px] text-tenue">
+                Sem mídia. Carrossel exige 2 a 10 imagens; Reel exige um vídeo.
+              </p>
+            )}
+
+            <form onSubmit={anexarUrl} className="flex gap-2">
+              <Selecao name="tipo" defaultValue="imagem" className="h-8 w-24 text-xs">
+                <option value="imagem">Imagem</option>
+                <option value="video">Vídeo</option>
+              </Selecao>
+              <Input
+                name="url"
+                type="url"
+                required
+                placeholder="URL pública da mídia"
+                className="h-8 text-xs"
+              />
+              <Botao type="submit" variante="secundario" tamanho="sm" disabled={ocupado}>
+                Anexar
+              </Botao>
+            </form>
+            <p className="text-[10px] text-tenue">
+              A URL precisa ser pública e estável: o Meta baixa a mídia do lado dele, e link
+              assinado que expira é a causa nº 1 de container travado em processamento.
+            </p>
+          </section>
+
+          {/* ── Agendamento e publicação ── */}
+          <section className="space-y-3 border-t border-borda pt-4">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-suave">
+              Distribuição
+            </h3>
+
+            <form onSubmit={agendar} className="flex flex-wrap items-end gap-2">
+              <div className="flex-1">
+                <Campo rotulo="Agendar para" htmlFor="e-data">
+                  <Input
+                    id="e-data"
+                    name="data"
+                    type="datetime-local"
+                    defaultValue={
+                      post.agendadoPara
+                        ? new Date(
+                            post.agendadoPara.getTime() -
+                              post.agendadoPara.getTimezoneOffset() * 60000,
+                          )
+                            .toISOString()
+                            .slice(0, 16)
+                        : ""
+                    }
+                    className="h-8 text-xs"
+                  />
+                </Campo>
+              </div>
+              <Botao type="submit" variante="secundario" tamanho="sm" disabled={ocupado}>
+                <CalendarClock />
+                Agendar
+              </Botao>
+            </form>
+
+            <Botao
+              variante="primario"
+              tamanho="sm"
+              onClick={publicar}
+              disabled={ocupado || !metaDisponivel}
+              title={
+                metaDisponivel
+                  ? "Publicar via Graph API"
+                  : "Graph API não configurada (Fase 5) — publique pelo Meta Business Suite"
+              }
+              className="w-full"
+            >
+              <Send />
+              {publicacao.carregando ? "Publicando…" : "Publicar agora"}
+            </Botao>
+
+            {!metaDisponivel ? (
+              <p className="text-[10px] text-tenue">
+                Fase 5 pendente. Publique manualmente e mova o card para Publicado — o registro
+                de métricas funciona igual.
+              </p>
+            ) : null}
+          </section>
+        </div>
+
+        <footer className="flex items-center gap-2 border-t border-borda p-3">
+          <Botao variante="destrutivo" tamanho="sm" onClick={excluir} disabled={ocupado}>
+            <Trash2 />
+            Excluir
+          </Botao>
+          <div className="ml-auto flex gap-2">
+            <Botao variante="fantasma" tamanho="sm" onClick={aoFechar}>
+              Fechar
+            </Botao>
+            <Botao variante="primario" tamanho="sm" onClick={salvarCampos} disabled={ocupado}>
+              {salvar.carregando ? "Salvando…" : "Salvar"}
+            </Botao>
+          </div>
+        </footer>
+      </aside>
+    </>
+  );
+}
