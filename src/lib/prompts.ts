@@ -71,13 +71,28 @@ REGRAS:
    (curiosity gap, lista prometida, tensão narrativa, prova visual, ritmo de cortes).
 3. Identifique o loop: como o final conecta de volta ao início (essencial para replay).
 4. Identifique o CTA real (o que o vídeo pede: salvar, compartilhar, seguir, comentar).
-5. Nomeie o padrão em 2-4 palavras (ex: "lista negativa", "mito vs realidade",
-   "erro comum", "antes e depois").
+5. Nomeie o PADRÃO — o mecanismo reutilizável, nunca o tema nem o efeito.
+
+   O padrão é o rótulo pelo qual posts são COMPARADOS entre si: o relatório
+   semanal agrupa performance por padrão, e a geração de roteiro exige três
+   padrões DIFERENTES. Um rótulo que só aparece uma vez não serve para nada.
+
+   a) REUSE um dos PADRÕES JÁ CATALOGADOS sempre que o mecanismo for o mesmo,
+      ainda que o tema seja outro. Copie o rótulo EXATAMENTE como está na lista.
+   b) Só invente rótulo novo se o mecanismo for mesmo inédito frente à lista.
+      Nesse caso: 2 a 4 palavras, minúsculas, concretas — alguém deve conseguir
+      escrever um roteiro só de ler o rótulo.
+   c) PROIBIDO rótulo abstrato ou interpretativo, do tipo "revelação filosófica
+      progressiva", "jornada emocional" ou "reflexão profunda". Esses descrevem
+      o EFEITO no espectador, não o MECANISMO, e não são reutilizáveis.
+
+PADRÕES JÁ CATALOGADOS (reuse quando couber):
+{{padroesExistentes}}
 
 SAÍDA: APENAS JSON válido, sem markdown, sem comentários, neste formato:
 {"gancho":{"tipo":"...","texto":"..."},"mecanismoRetencao":"...","loop":"...","cta":"...","padrao":"..."}
 
-EXEMPLO:
+EXEMPLO 1 — padrão novo, porque nada na lista descrevia o mecanismo:
 ENTRADA (transcrição): "Ninguém te conta isso sobre investir em cripto. A maioria
 perde dinheiro por 3 motivos, e o terceiro é o que ninguém corrige. Primeiro:
 compram no topo por FOMO. Segundo: não entendem ciclos. Terceiro: vendem no
@@ -90,6 +105,21 @@ SAÍDA:
 "loop":"o 'terceiro motivo' é o mesmo erro que define a maioria, fechando com o gancho de exclusividade",
 "cta":"salvar o vídeo para consultar na próxima queda de mercado",
 "padrao":"lista numerada com item surpresa"}
+
+EXEMPLO 2 — mesmo com tema e vocabulário totalmente diferentes, o mecanismo já
+estava catalogado como "contraste", então o rótulo é REUSADO em vez de reinventado:
+ENTRADA (transcrição): "Enquanto você espera o momento certo pra comprar, quem já
+comprou está esperando você. Todo topo foi construído por alguém que entrou tarde
+com medo de ficar de fora. O gráfico não mede projeto, mede quantas pessoas ainda
+têm medo. O momento certo nunca foi sobre o mercado. Sempre foi sobre quanto tempo
+você aguenta ficar com medo sem fazer nada. Salva e lê de novo na próxima queda."
+
+SAÍDA:
+{"gancho":{"tipo":"contraste","texto":"Enquanto você espera o momento certo pra comprar, quem já comprou está esperando você"},
+"mecanismoRetencao":"reformulações sucessivas do mesmo conceito, cada frase reinterpretando a anterior e adiando a conclusão",
+"loop":"a frase final sobre ficar parado com medo remete ao gancho de esperar o momento certo",
+"cta":"salvar para reler na próxima queda do mercado",
+"padrao":"contraste"}
 
 AGORA DECOMPONHA A SEGUINTE TRANSCRIÇÃO:
 {{transcricao}}`;

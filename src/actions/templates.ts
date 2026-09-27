@@ -6,8 +6,26 @@ import { callClaudeStructured, iaDisponivel } from "@/lib/ai";
 import { prisma } from "@/lib/db";
 import { CATEGORIAS_GANCHO } from "@/lib/domain";
 import { gravarEstrutura } from "@/lib/json-fields";
+import { canonizarPadrao, listaParaPrompt, PADRAO_NAO_CLASSIFICADO } from "@/lib/padroes";
 import { decomposeViralPrompt, decomposeViralSchema, interpolar } from "@/lib/prompts";
 import { acao, idSchema, type ActionResult } from "./_shared";
+
+/**
+ * Padrões já em uso, dos mais frequentes para os menos.
+ *
+ * A ordem importa dentro do prompt: o modelo lê a lista de cima para baixo, e
+ * um padrão com 5 posts é candidato melhor a reuso do que um com 1 — é ele que
+ * já tem massa para o relatório semanal comparar.
+ */
+async function padroesCatalogados(): Promise<string[]> {
+  const grupos = await prisma.templateViral.groupBy({
+    by: ["padrao"],
+    _count: { padrao: true },
+    orderBy: { _count: { padrao: "desc" } },
+    take: 25,
+  });
+  return grupos.map((g) => g.padrao);
+}
 
 /**
  * Cadastro manual de template (Fase 1 — swipe file sem IA).
@@ -31,12 +49,16 @@ const createTemplateSchema = z.object({
 
 export async function createTemplate(entrada: unknown): Promise<ActionResult<{ id: string }>> {
   return acao(createTemplateSchema, entrada, async (d) => {
+    // Mesma canonização da decomposição por IA: digitar "Contraste" aqui não
+    // pode criar um segundo grupo ao lado de "contraste".
+    const padrao = canonizarPadrao(d.padrao, await padroesCatalogados());
+
     const t = await prisma.templateViral.create({
       data: {
         nichoId: d.nichoId,
         fonte: d.fonte,
         gancho: d.gancho,
-        padrao: d.padrao,
+        padrao,
         transcricao: d.transcricao ?? null,
         performance: d.performance ?? null,
         estrutura: gravarEstrutura(d.estrutura ?? {}),
@@ -72,11 +94,23 @@ export async function decomposeViral(
       );
     }
 
-    const prompt = interpolar(decomposeViralPrompt, { transcricao: d.transcricao });
+    // Vocabulário atual do swipe file, lido UMA vez: alimenta o prompt (para o
+    // modelo reusar) e a canonização (para consertar o que ele devolver).
+    const catalogados = await padroesCatalogados();
+
+    const prompt = interpolar(decomposeViralPrompt, {
+      transcricao: d.transcricao,
+      padroesExistentes: listaParaPrompt(catalogados),
+    });
     const r = await callClaudeStructured(prompt, decomposeViralSchema, {
       tarefa: "decomposicao",
       maxTokens: 1500,
     });
+
+    // Segunda camada: mesmo pedindo reuso, o modelo pode devolver "Contraste"
+    // ou "contraste " e fragmentar o agrupamento. A canonização resolve contra
+    // a grafia já catalogada.
+    const padrao = canonizarPadrao(r.padrao, catalogados);
 
     const template = await prisma.templateViral.create({
       data: {
@@ -84,7 +118,7 @@ export async function decomposeViral(
         fonte: d.fonte ?? "decomposição manual",
         transcricao: d.transcricao,
         gancho: r.gancho.texto,
-        padrao: r.padrao,
+        padrao,
         estrutura: gravarEstrutura({
           hook: r.gancho.texto,
           retention: r.mecanismoRetencao,
@@ -135,7 +169,7 @@ export async function promoverPostATemplate(
         nichoId: post.nichoId,
         fonte,
         gancho: gancho.slice(0, 500),
-        padrao: post.template?.padrao ?? `vencedor: ${post.formato}`,
+        padrao: post.template?.padrao ?? PADRAO_NAO_CLASSIFICADO,
         transcricao: post.roteiro,
         performance: post.metricas[0]?.alcance ?? null,
         estrutura: post.template?.estrutura ?? gravarEstrutura({ hook: gancho }),
