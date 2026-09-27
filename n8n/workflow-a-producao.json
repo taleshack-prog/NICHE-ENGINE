@@ -1,0 +1,577 @@
+{
+  "name": "Niche Engine - A: Pipeline de Produção",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "nodes": [
+    {
+      "id": "a1",
+      "name": "Schedule 06:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -820,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 6 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a2",
+      "name": "Selecionar Tópico",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -600,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, tema, nicho_id FROM topicos WHERE status = 'pendente' ORDER BY prioridade DESC, criado_em ASC LIMIT 1;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres DB"
+        }
+      }
+    },
+    {
+      "id": "a3",
+      "name": "Contexto do Nicho",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -380,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  COALESCE((\n    SELECT string_agg(padrao || ' — gancho: ' || gancho, E'\\n')\n    FROM (SELECT padrao, gancho FROM templates_virais\n          WHERE nicho_id = '{{ $json.nicho_id }}'\n          ORDER BY COALESCE(performance, 0) DESC LIMIT 6) t\n  ), 'sem templates cadastrados') AS swipe_file,\n  COALESCE((\n    SELECT titulo FROM posts\n    WHERE nicho_id = '{{ $json.nicho_id }}'\n    ORDER BY criado_em DESC LIMIT 1\n  ), 'nenhum') AS gancho_anterior,\n  COALESCE((SELECT persona FROM nichos WHERE id = '{{ $json.nicho_id }}'), '') AS persona;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres DB"
+        }
+      }
+    },
+    {
+      "id": "a4",
+      "name": "Montar Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const topico = $('Selecionar Tópico').first().json;\nconst ctx = $input.first().json;\n\nconst PROMPT = \"Você é roteirista de Reels faceless. Gera roteiros de 30-60 segundos\\npara narração por voz IA sobre b-roll gerado por IA.\\n\\nREGRAS OBRIGATÓRIAS:\\n1. ESTRUTURA FIXA de cada roteiro:\\n   - GANCHO (0-3s): frase que interrompe o scroll. Baseie-se nos templates\\n     do swipe file fornecido. NUNCA use gancho idêntico ao do post anterior.\\n   - CORPO: valor denso, frases curtas, uma ideia por frase. Sem \\\"olá pessoal\\\",\\n     sem introdução, sem \\\"nesse vídeo eu vou\\\".\\n   - LOOP: a última frase conecta semanticamente com a primeira, incentivando\\n     o replay (o algoritmo conta replays como retenção).\\n   - CTA: salvar ou compartilhar. NUNCA \\\"comente X\\\" (comentário-genérico\\n     atrai audiência fria de baixa qualidade).\\n2. GERE EXATAMENTE 3 variações, cada uma usando um TEMPLATE DIFERENTE\\n   do swipe file fornecido.\\n3. Cada frase do roteiro deve ser visualizável (o b-roll será gerado por IA).\\n\\nSAÍDA: APENAS JSON válido:\\n{\\\"variacoes\\\":[{\\\"templateUsado\\\":\\\"...\\\",\\\"gancho\\\":\\\"...\\\",\\\"corpo\\\":\\\"...\\\",\\\"loop\\\":\\\"...\\\",\\\"cta\\\":\\\"...\\\",\\\"duracaoEstimadaSeg\\\":45}]}\\n\\nEXEMPLO:\\nENTRADA:\\ntema: \\\"por que a maioria desiste de aprender a investir no primeiro mês\\\"\\nswipe file (templates):\\n  1. padrao \\\"lista negativa\\\" — gancho tipo \\\"Ninguém te conta que...\\\"\\n  2. padrao \\\"erro comum\\\" — gancho tipo \\\"Se você faz isso, pare agora\\\"\\n  3. padrao \\\"contraste\\\" — gancho tipo \\\"Enquanto X, Y está acontecendo\\\"\\npost anterior usou: gancho \\\"Ninguém te conta...\\\"\\n\\nSAÍDA:\\n{\\\"variacoes\\\":[\\n{\\\"templateUsado\\\":\\\"erro comum\\\",\\\"gancho\\\":\\\"Se você estudou investimentos e ainda não investe, o problema é este.\\\",\\\"corpo\\\":\\\"Você consumiu dezenas de vídeos. Entendeu juros compostos. Sabe o que é ETF. Mas não executa. Não é falta de conhecimento. É excesso dele. Paralisia por análise: cada vídeo novo contradiz o anterior e você volta pra estaca zero. A solução é chata: escolher UMA estratégia simples e seguir por 90 dias sem trocar.\\\",\\\"loop\\\":\\\"O excesso de conteúdo que te trouxe até aqui é exatamente o que te impede de começar.\\\",\\\"cta\\\":\\\"Salva esse vídeo e assiste toda vez que sentir vontade de trocar de estratégia.\\\",\\\"duracaoEstimadaSeg\\\":42},\\n{\\\"templateUsado\\\":\\\"contraste\\\",\\\"gancho\\\":\\\"Enquanto você estuda o investimento perfeito, o tempo composto está passando.\\\",\\\"corpo\\\":\\\"Dois investidores. O primeiro começou há três anos com uma carteira medíocre. O segundo ainda está escolhendo a carteira ideal. O primeiro está na frente e vai continuar. Não porque escolheu melhor. Porque começou antes. Tempo no mercado é a única variável que você não recupera depois.\\\",\\\"loop\\\":\\\"A carteira perfeita que você está montando vale menos que os três anos que ela custou.\\\",\\\"cta\\\":\\\"Compartilha com quem está há meses só pesquisando.\\\",\\\"duracaoEstimadaSeg\\\":45},\\n{\\\"templateUsado\\\":\\\"lista negativa\\\",\\\"gancho\\\":\\\"Três coisas que ninguém avisa sobre o primeiro mês investindo.\\\",\\\"corpo\\\":\\\"Primeira: o rendimento vai parecer ridículo, e é normal — um mês não mostra nada. Segunda: você vai querer conferir o saldo todo dia, e isso só treina ansiedade. Terceira: alguém vai te mostrar um retorno absurdo e você vai duvidar da sua estratégia. As três testam a mesma coisa: se você aguenta o tédio.\\\",\\\"loop\\\":\\\"O primeiro mês não é sobre rendimento. É sobre descobrir se você aguenta o segundo.\\\",\\\"cta\\\":\\\"Salva pra reler no fim do seu primeiro mês.\\\",\\\"duracaoEstimadaSeg\\\":48}\\n]}\\n\\nAGORA GERE PARA:\\ntema: {{tema}}\\nswipe file (templates disponíveis): {{swipeFile}}\\ngancho do post anterior: {{ganchoAnterior}}\";\n\nconst prompt = PROMPT\n  .replace('{{tema}}', topico.tema)\n  .replace('{{swipeFile}}', ctx.swipe_file)\n  .replace('{{ganchoAnterior}}', ctx.gancho_anterior);\n\nreturn [{ json: { prompt, tema: topico.tema, nichoId: topico.nicho_id, topicoId: topico.id } }];"
+      }
+    },
+    {
+      "id": "a5",
+      "name": "Claude - Gerar Roteiro",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        60,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.ANTHROPIC_API_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 4096, messages: [{ role: 'user', content: $json.prompt }] }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "a6",
+      "name": "Parse e Valida",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst blocos = (raw.content || []).filter(b => b.type === 'text').map(b => b.text).join('');\nconst texto = blocos.replace(/```(?:json)?/gi, '').trim();\n\nlet parsed;\ntry { parsed = JSON.parse(texto); }\ncatch (e) { throw new Error('Claude devolveu JSON inválido: ' + texto.slice(0, 300)); }\n\nif (!Array.isArray(parsed.variacoes) || parsed.variacoes.length !== 3) {\n  throw new Error('Esperadas 3 variações, vieram ' + (parsed.variacoes || []).length);\n}\n\nconst v = parsed.variacoes[0];\nconst ctx = $('Montar Prompt').first().json;\nconst roteiro = [v.gancho, '', v.corpo, '', v.loop, '', v.cta].join('\\n');\n\nreturn [{ json: {\n  titulo: v.gancho.slice(0, 120),\n  roteiro,\n  gancho: v.gancho,\n  corpo: v.corpo,\n  tema: ctx.tema,\n  nichoId: ctx.nichoId,\n  topicoId: ctx.topicoId,\n  variacoes: parsed.variacoes,\n} }];"
+      }
+    },
+    {
+      "id": "a7",
+      "name": "Fal - Gerar Imagens",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        500,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://fal.run/fal-ai/flux/dev",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Key {{ $env.FAL_KEY }}"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ prompt: 'Cinematic b-roll still for a faceless social video about: ' + $json.tema + '. Visual beats: ' + String($json.corpo).slice(0, 320) + '. No text, no watermark, no faces.', image_size: 'portrait_16_9', num_images: 3 }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "a8",
+      "name": "Kling - Submeter Vídeo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://queue.fal.run/fal-ai/kling-video/v1/standard/image-to-video",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Key {{ $env.FAL_KEY }}"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ image_url: $json.images[0].url, prompt: 'Slow cinematic push-in, subtle parallax, film grain', duration: '5' }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "a9",
+      "name": "Wait 30s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        940,
+        0
+      ],
+      "parameters": {
+        "amount": 30,
+        "unit": "seconds"
+      },
+      "webhookId": "a9-hook"
+    },
+    {
+      "id": "a10",
+      "name": "Poll Status Kling",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1160,
+        0
+      ],
+      "parameters": {
+        "url": "={{ $('Kling - Submeter Vídeo').first().json.status_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Key {{ $env.FAL_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a11",
+      "name": "Concluiu?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1380,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a11-c1",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "COMPLETED",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a12",
+      "name": "Tentativas < 20?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1380,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a12-c1",
+              "leftValue": "={{ $runIndex }}",
+              "rightValue": 20,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a13",
+      "name": "Abortar - Vídeo Travado",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        200
+      ],
+      "parameters": {
+        "errorMessage": "Kling não finalizou em ~10 min. Verifique se a URL da imagem do Fal ainda é pública."
+      }
+    },
+    {
+      "id": "a14",
+      "name": "Buscar Vídeo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1600,
+        -120
+      ],
+      "parameters": {
+        "url": "={{ $('Kling - Submeter Vídeo').first().json.response_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Key {{ $env.FAL_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a15",
+      "name": "Montar INSERT",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        -120
+      ],
+      "parameters": {
+        "jsCode": "// Escape de literal SQL. Apóstrofo em gancho (\"Ninguém 'te' conta\") quebra\n// qualquer INSERT montado por interpolação — por isso todo texto passa aqui.\nconst q = (v) => (v === null || v === undefined || v === '' ? 'NULL' : \"'\" + String(v).replace(/'/g, \"''\") + \"'\");\nconst n = (v) => (v === null || v === undefined || v === '' || isNaN(Number(v)) ? 'NULL' : String(Number(v)));\n\nconst post = $('Parse e Valida').first().json;\nconst imgs = ($('Fal - Gerar Imagens').first().json.images || []).map(i => ({ tipo: 'imagem', url: i.url }));\nconst video = $input.first().json?.video?.url;\n\nconst midia = video ? [{ tipo: 'video', url: video }, ...imgs] : imgs;\nif (!midia.length) throw new Error('Nenhuma mídia gerada — não faz sentido criar o post.');\n\n// id gerado aqui porque o cuid() do Prisma é do lado da aplicação.\nconst sql = `INSERT INTO posts (id, titulo, formato, roteiro, legenda, hashtags, midia_paths, status, nicho_id, criado_em, atualizado_em)\nVALUES (gen_random_uuid()::text, ${q(post.titulo)}, 'reel', ${q(post.roteiro)}, NULL, NULL, ${q(JSON.stringify(midia))}, 'pronto', ${q(post.nichoId)}, NOW(), NOW())\nRETURNING id;`;\n\nreturn [{ json: { sql, topicoId: post.topicoId, titulo: post.titulo } }];"
+      }
+    },
+    {
+      "id": "a16",
+      "name": "Salvar Post",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2040,
+        -120
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql }}",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres DB"
+        }
+      }
+    },
+    {
+      "id": "a17",
+      "name": "Marcar Tópico Produzido",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2260,
+        -120
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE topicos SET status = 'em_producao' WHERE id = {{ $('Montar INSERT').first().json.topicoId }};",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres DB"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule 06:00": {
+      "main": [
+        [
+          {
+            "node": "Selecionar Tópico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Selecionar Tópico": {
+      "main": [
+        [
+          {
+            "node": "Contexto do Nicho",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contexto do Nicho": {
+      "main": [
+        [
+          {
+            "node": "Montar Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Prompt": {
+      "main": [
+        [
+          {
+            "node": "Claude - Gerar Roteiro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude - Gerar Roteiro": {
+      "main": [
+        [
+          {
+            "node": "Parse e Valida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse e Valida": {
+      "main": [
+        [
+          {
+            "node": "Fal - Gerar Imagens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fal - Gerar Imagens": {
+      "main": [
+        [
+          {
+            "node": "Kling - Submeter Vídeo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kling - Submeter Vídeo": {
+      "main": [
+        [
+          {
+            "node": "Wait 30s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 30s": {
+      "main": [
+        [
+          {
+            "node": "Poll Status Kling",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll Status Kling": {
+      "main": [
+        [
+          {
+            "node": "Concluiu?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Concluiu?": {
+      "main": [
+        [
+          {
+            "node": "Buscar Vídeo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Tentativas < 20?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tentativas < 20?": {
+      "main": [
+        [
+          {
+            "node": "Wait 30s",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Abortar - Vídeo Travado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Vídeo": {
+      "main": [
+        [
+          {
+            "node": "Montar INSERT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar INSERT": {
+      "main": [
+        [
+          {
+            "node": "Salvar Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salvar Post": {
+      "main": [
+        [
+          {
+            "node": "Marcar Tópico Produzido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

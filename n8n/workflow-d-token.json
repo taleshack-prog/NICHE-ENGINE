@@ -1,0 +1,268 @@
+{
+  "name": "Niche Engine - D: Renovação Token Meta",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "nodes": [
+    {
+      "id": "d1",
+      "name": "Schedule 04:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -600,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 4 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d2",
+      "name": "Token Vencendo?",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -380,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT valor AS token,\n       COALESCE((SELECT valor FROM config WHERE chave = 'meta_graph_version'), 'v21.0') AS versao,\n       atualizado_em\nFROM config\nWHERE chave = 'meta_long_lived_token'\n  AND valor <> 'SEU_TOKEN_INICIAL_AQUI'\n  AND atualizado_em < NOW() - INTERVAL '45 days';",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres DB"
+        }
+      }
+    },
+    {
+      "id": "d3",
+      "name": "Trocar Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -160,
+        0
+      ],
+      "parameters": {
+        "url": "=https://graph.facebook.com/{{ $json.versao }}/oauth/access_token",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "grant_type",
+              "value": "fb_exchange_token"
+            },
+            {
+              "name": "client_id",
+              "value": "={{ $env.META_APP_ID }}"
+            },
+            {
+              "name": "client_secret",
+              "value": "={{ $env.META_APP_SECRET }}"
+            },
+            {
+              "name": "fb_exchange_token",
+              "value": "={{ $json.token }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "d4",
+      "name": "Veio Token Novo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        60,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d4-c1",
+              "leftValue": "={{ $json.access_token }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "d5",
+      "name": "Abortar - Renovação Falhou",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        280,
+        200
+      ],
+      "parameters": {
+        "errorMessage": "fb_exchange_token não devolveu access_token. Gere um token novo no Graph API Explorer e grave em config.meta_long_lived_token."
+      }
+    },
+    {
+      "id": "d6",
+      "name": "Validar Token Novo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        280,
+        -120
+      ],
+      "parameters": {
+        "url": "=https://graph.facebook.com/{{ $('Token Vencendo?').first().json.versao }}/me",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id"
+            },
+            {
+              "name": "access_token",
+              "value": "={{ $('Trocar Token').first().json.access_token }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "d7",
+      "name": "Montar UPDATE",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        -120
+      ],
+      "parameters": {
+        "jsCode": "// Escape de literal SQL. Apóstrofo em gancho (\"Ninguém 'te' conta\") quebra\n// qualquer INSERT montado por interpolação — por isso todo texto passa aqui.\nconst q = (v) => (v === null || v === undefined || v === '' ? 'NULL' : \"'\" + String(v).replace(/'/g, \"''\") + \"'\");\nconst n = (v) => (v === null || v === undefined || v === '' || isNaN(Number(v)) ? 'NULL' : String(Number(v)));\n\nconst validacao = $input.first().json;\nif (!validacao.id) throw new Error('Token novo não valida em /me — não será gravado.');\n\nconst novo = $('Trocar Token').first().json.access_token;\nconst sql = `UPDATE config SET valor = ${q(novo)}, atualizado_em = NOW() WHERE chave = 'meta_long_lived_token';`;\nreturn [{ json: { sql, validadoPara: validacao.id } }];"
+      }
+    },
+    {
+      "id": "d8",
+      "name": "Gravar Token",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        720,
+        -120
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql }}",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres DB"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule 04:00": {
+      "main": [
+        [
+          {
+            "node": "Token Vencendo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token Vencendo?": {
+      "main": [
+        [
+          {
+            "node": "Trocar Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trocar Token": {
+      "main": [
+        [
+          {
+            "node": "Veio Token Novo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Veio Token Novo?": {
+      "main": [
+        [
+          {
+            "node": "Validar Token Novo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Abortar - Renovação Falhou",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar Token Novo": {
+      "main": [
+        [
+          {
+            "node": "Montar UPDATE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar UPDATE": {
+      "main": [
+        [
+          {
+            "node": "Gravar Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

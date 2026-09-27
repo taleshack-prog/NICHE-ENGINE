@@ -1,0 +1,729 @@
+{
+  "name": "Niche Engine - B: Publicação Graph API",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "nodes": [
+    {
+      "id": "b1",
+      "name": "Schedule 15min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -820,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "b2",
+      "name": "Ler Credenciais",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -600,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  MAX(CASE WHEN chave = 'meta_long_lived_token' THEN valor END) AS token,\n  MAX(CASE WHEN chave = 'ig_user_id' THEN valor END) AS ig_user_id,\n  COALESCE(MAX(CASE WHEN chave = 'meta_graph_version' THEN valor END), 'v21.0') AS versao,\n  MAX(CASE WHEN chave = 'meta_long_lived_token' THEN atualizado_em END) AS token_atualizado_em\nFROM config;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres DB"
+        }
+      }
+    },
+    {
+      "id": "b3",
+      "name": "Tem Token?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -380,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b3-c1",
+              "leftValue": "={{ $json.token }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "b4",
+      "name": "Abortar - Sem Token",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        200
+      ],
+      "parameters": {
+        "errorMessage": "Tabela config sem meta_long_lived_token. Rode o Workflow D ou preencha a chave."
+      }
+    },
+    {
+      "id": "b5",
+      "name": "Selecionar Agendados",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -160,
+        -120
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, titulo, formato, legenda, hashtags, midia_paths\nFROM posts\nWHERE status = 'agendado' AND agendado_para <= NOW()\nORDER BY agendado_para ASC\nLIMIT 10;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres DB"
+        }
+      }
+    },
+    {
+      "id": "b6",
+      "name": "Um Post Por Vez",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        60,
+        -120
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "b7",
+      "name": "É Carrossel?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        280,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b7-c1",
+              "leftValue": "={{ $json.formato }}",
+              "rightValue": "carrossel",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "b8",
+      "name": "Preparar Imagens",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        -160
+      ],
+      "parameters": {
+        "jsCode": "const post = $input.first().json;\n// midia_paths é TEXT com JSON (ver decisão 2 do schema): parse sempre funciona,\n// em SQLite e em PostgreSQL.\nconst midia = typeof post.midia_paths === 'string' ? JSON.parse(post.midia_paths || '[]') : (post.midia_paths || []);\nconst imagens = midia.filter(m => m.tipo === 'imagem');\n\nif (imagens.length < 2) throw new Error('Carrossel exige no mínimo 2 imagens: ' + post.titulo);\nif (imagens.length > 10) throw new Error('Carrossel aceita no máximo 10 imagens: ' + post.titulo);\n\nreturn imagens.map(m => ({ json: { postId: post.id, legenda: post.legenda || '', url: m.url } }));"
+      }
+    },
+    {
+      "id": "b9",
+      "name": "Criar Container Filho",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        -160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $('Ler Credenciais').first().json.versao }}/{{ $('Ler Credenciais').first().json.ig_user_id }}/media",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $('Ler Credenciais').first().json.token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ image_url: $json.url, is_carousel_item: true }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "b10",
+      "name": "Agrupar Containers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        940,
+        -160
+      ],
+      "parameters": {
+        "jsCode": "const post = $('Um Post Por Vez').first().json;\nconst ids = $input.all().map(i => i.json.id).filter(Boolean);\nif (!ids.length) throw new Error('Nenhum container filho criado para ' + post.titulo);\nreturn [{ json: { childrenIds: ids.join(','), legenda: post.legenda || '' } }];"
+      }
+    },
+    {
+      "id": "b11",
+      "name": "Criar Container Pai",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1160,
+        -160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $('Ler Credenciais').first().json.versao }}/{{ $('Ler Credenciais').first().json.ig_user_id }}/media",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $('Ler Credenciais').first().json.token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ media_type: 'CAROUSEL', children: $json.childrenIds, caption: $json.legenda }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "b12",
+      "name": "Preparar Reel",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        160
+      ],
+      "parameters": {
+        "jsCode": "const post = $input.first().json;\nconst midia = typeof post.midia_paths === 'string' ? JSON.parse(post.midia_paths || '[]') : (post.midia_paths || []);\nconst video = midia.find(m => m.tipo === 'video');\nif (!video) throw new Error('Reel exige um item de mídia do tipo vídeo: ' + post.titulo);\nreturn [{ json: { url: video.url, legenda: post.legenda || '' } }];"
+      }
+    },
+    {
+      "id": "b13",
+      "name": "Criar Container Reel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $('Ler Credenciais').first().json.versao }}/{{ $('Ler Credenciais').first().json.ig_user_id }}/media",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $('Ler Credenciais').first().json.token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ media_type: 'REELS', video_url: $json.url, caption: $json.legenda, share_to_feed: true }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "b14",
+      "name": "Container Criado",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1380,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "b15",
+      "name": "Wait 60s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1600,
+        0
+      ],
+      "parameters": {
+        "amount": 60,
+        "unit": "seconds"
+      },
+      "webhookId": "b15-hook"
+    },
+    {
+      "id": "b16",
+      "name": "Poll Container",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1820,
+        0
+      ],
+      "parameters": {
+        "url": "=https://graph.facebook.com/{{ $('Ler Credenciais').first().json.versao }}/{{ $('Container Criado').first().json.id }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "status_code,status"
+            },
+            {
+              "name": "access_token",
+              "value": "={{ $('Ler Credenciais').first().json.token }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "b17",
+      "name": "Processou?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2040,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b17-c1",
+              "leftValue": "={{ $json.status_code }}",
+              "rightValue": "FINISHED",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "b18",
+      "name": "Tentativas < 10?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2040,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b18-c1",
+              "leftValue": "={{ $runIndex }}",
+              "rightValue": 10,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "b19",
+      "name": "Abortar - Container Travado",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        2260,
+        200
+      ],
+      "parameters": {
+        "errorMessage": "Container não finalizou em ~10 min. Vídeo precisa ser vertical, com áudio, em URL pública que não expira."
+      }
+    },
+    {
+      "id": "b20",
+      "name": "Publicar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2260,
+        -160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $('Ler Credenciais').first().json.versao }}/{{ $('Ler Credenciais').first().json.ig_user_id }}/media_publish",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $('Ler Credenciais').first().json.token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ creation_id: $('Container Criado').first().json.id }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "b21",
+      "name": "Montar UPDATE",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2480,
+        -160
+      ],
+      "parameters": {
+        "jsCode": "// Escape de literal SQL. Apóstrofo em gancho (\"Ninguém 'te' conta\") quebra\n// qualquer INSERT montado por interpolação — por isso todo texto passa aqui.\nconst q = (v) => (v === null || v === undefined || v === '' ? 'NULL' : \"'\" + String(v).replace(/'/g, \"''\") + \"'\");\nconst n = (v) => (v === null || v === undefined || v === '' || isNaN(Number(v)) ? 'NULL' : String(Number(v)));\n\nconst igPostId = $input.first().json.id;\nconst postId = $('Um Post Por Vez').first().json.id;\nif (!igPostId) throw new Error('media_publish não devolveu id');\n\nconst sql = `UPDATE posts SET status = 'publicado', publicado_em = NOW(), atualizado_em = NOW(), erro_publicacao = NULL, ig_post_id = ${q(igPostId)} WHERE id = ${q(postId)};`;\nreturn [{ json: { sql } }];"
+      }
+    },
+    {
+      "id": "b22",
+      "name": "Atualizar Post",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2700,
+        -160
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql }}",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres DB"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule 15min": {
+      "main": [
+        [
+          {
+            "node": "Ler Credenciais",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ler Credenciais": {
+      "main": [
+        [
+          {
+            "node": "Tem Token?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem Token?": {
+      "main": [
+        [
+          {
+            "node": "Selecionar Agendados",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Abortar - Sem Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Selecionar Agendados": {
+      "main": [
+        [
+          {
+            "node": "Um Post Por Vez",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Um Post Por Vez": {
+      "main": [
+        [],
+        [
+          {
+            "node": "É Carrossel?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "É Carrossel?": {
+      "main": [
+        [
+          {
+            "node": "Preparar Imagens",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar Reel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Imagens": {
+      "main": [
+        [
+          {
+            "node": "Criar Container Filho",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Criar Container Filho": {
+      "main": [
+        [
+          {
+            "node": "Agrupar Containers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agrupar Containers": {
+      "main": [
+        [
+          {
+            "node": "Criar Container Pai",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Criar Container Pai": {
+      "main": [
+        [
+          {
+            "node": "Container Criado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Reel": {
+      "main": [
+        [
+          {
+            "node": "Criar Container Reel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Criar Container Reel": {
+      "main": [
+        [
+          {
+            "node": "Container Criado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Container Criado": {
+      "main": [
+        [
+          {
+            "node": "Wait 60s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 60s": {
+      "main": [
+        [
+          {
+            "node": "Poll Container",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll Container": {
+      "main": [
+        [
+          {
+            "node": "Processou?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Processou?": {
+      "main": [
+        [
+          {
+            "node": "Publicar",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Tentativas < 10?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tentativas < 10?": {
+      "main": [
+        [
+          {
+            "node": "Wait 60s",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Abortar - Container Travado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publicar": {
+      "main": [
+        [
+          {
+            "node": "Montar UPDATE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar UPDATE": {
+      "main": [
+        [
+          {
+            "node": "Atualizar Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Atualizar Post": {
+      "main": [
+        [
+          {
+            "node": "Um Post Por Vez",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

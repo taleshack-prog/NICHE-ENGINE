@@ -1,0 +1,469 @@
+{
+  "name": "Niche Engine - C: Métricas + Relatório Semanal",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "nodes": [
+    {
+      "id": "c1",
+      "name": "Schedule 07:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -820,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "c2",
+      "name": "Ler Credenciais",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -600,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  MAX(CASE WHEN chave = 'meta_long_lived_token' THEN valor END) AS token,\n  MAX(CASE WHEN chave = 'ig_user_id' THEN valor END) AS ig_user_id,\n  COALESCE(MAX(CASE WHEN chave = 'meta_graph_version' THEN valor END), 'v21.0') AS versao,\n  MAX(CASE WHEN chave = 'meta_long_lived_token' THEN atualizado_em END) AS token_atualizado_em\nFROM config;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres DB"
+        }
+      }
+    },
+    {
+      "id": "c3",
+      "name": "Posts da Semana",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -380,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, titulo, ig_post_id, formato\nFROM posts\nWHERE status = 'publicado'\n  AND ig_post_id IS NOT NULL\n  AND publicado_em >= NOW() - INTERVAL '7 days'\nORDER BY publicado_em ASC;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres DB"
+        }
+      }
+    },
+    {
+      "id": "c4",
+      "name": "Um Post Por Vez",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -160,
+        0
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "c5",
+      "name": "Graph API Insights",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        60,
+        160
+      ],
+      "parameters": {
+        "url": "=https://graph.facebook.com/{{ $('Ler Credenciais').first().json.versao }}/{{ $json.ig_post_id }}/insights",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "metric",
+              "value": "reach,saved,shares,comments,total_interactions"
+            },
+            {
+              "name": "access_token",
+              "value": "={{ $('Ler Credenciais').first().json.token }}"
+            }
+          ]
+        },
+        "onError": "continueRegularOutput",
+        "options": {}
+      }
+    },
+    {
+      "id": "c6",
+      "name": "Normalizar e Montar INSERT",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        160
+      ],
+      "parameters": {
+        "jsCode": "// Escape de literal SQL. Apóstrofo em gancho (\"Ninguém 'te' conta\") quebra\n// qualquer INSERT montado por interpolação — por isso todo texto passa aqui.\nconst q = (v) => (v === null || v === undefined || v === '' ? 'NULL' : \"'\" + String(v).replace(/'/g, \"''\") + \"'\");\nconst n = (v) => (v === null || v === undefined || v === '' || isNaN(Number(v)) ? 'NULL' : String(Number(v)));\n\nconst post = $('Um Post Por Vez').first().json;\nconst raw = $input.first().json;\nconst dados = raw.data || [];\n\n// A Graph API alterna entre values[0].value e total_value.value conforme a\n// métrica e a versão — aceitar os dois evita zerar silenciosamente.\nconst pegar = (nome) => {\n  const m = dados.find(x => x.name === nome);\n  const v = m?.values?.[0]?.value ?? m?.total_value?.value;\n  return v === undefined || v === null ? null : Number(v);\n};\n\nconst hoje = new Date().toISOString().slice(0, 10);\n\n// ON CONFLICT (post_id, data_ref): a coleta é diária e precisa ser idempotente,\n// senão duas execuções no mesmo dia inflam toda soma de alcance.\nconst sql = `INSERT INTO metricas (id, post_id, data_coleta, data_ref, alcance, salvamentos, compartilhamentos, comentarios)\nVALUES (gen_random_uuid()::text, ${q(post.id)}, NOW(), ${q(hoje)}, ${n(pegar('reach'))}, ${n(pegar('saved'))}, ${n(pegar('shares'))}, ${n(pegar('comments'))})\nON CONFLICT (post_id, data_ref) DO UPDATE SET\n  alcance = EXCLUDED.alcance,\n  salvamentos = EXCLUDED.salvamentos,\n  compartilhamentos = EXCLUDED.compartilhamentos,\n  comentarios = EXCLUDED.comentarios,\n  data_coleta = NOW();`;\n\nreturn [{ json: { sql, postId: post.id } }];"
+      }
+    },
+    {
+      "id": "c7",
+      "name": "Salvar Métrica",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        500,
+        160
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql }}",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres DB"
+        }
+      }
+    },
+    {
+      "id": "c8",
+      "name": "É Domingo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        60,
+        -160
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c8-c1",
+              "leftValue": "={{ new Date().getDay() }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c9",
+      "name": "Métricas Consolidadas",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        280,
+        -160
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT p.titulo AS post, p.formato, COALESCE(t.padrao, 'sem template') AS padrao,\n       m.alcance, m.salvamentos, m.compartilhamentos, m.comentarios,\n       m.retention_3s AS retention3s, m.follows_ganhos AS follows\nFROM metricas m\nJOIN posts p ON p.id = m.post_id\nLEFT JOIN templates_virais t ON t.id = p.template_id\nWHERE m.data_coleta >= NOW() - INTERVAL '7 days'\nORDER BY m.alcance DESC NULLS LAST;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres DB"
+        }
+      }
+    },
+    {
+      "id": "c10",
+      "name": "Preparar Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        -160
+      ],
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\n\n// Menos de 3 posts: o prompt do relatório manda declarar incerteza, e com 1-2\n// posts a IA inventaria padrão. Melhor não gastar a chamada.\nif (rows.length < 3) {\n  return [{ json: { suficiente: false, totalPosts: rows.length } }];\n}\n\nconst PROMPT = \"Você é analista de performance de conteúdo no Instagram.\\nRecebe as métricas da semana e produz um relatório acionável.\\n\\nREGRAS:\\n1. Baseie CADA conclusão em dados explícitos. Se os dados não sustentam\\n   uma conclusão, declare a incerteza — nunca invente padrão sem evidência.\\n2. Métricas em ordem de importância para o algoritmo: salvamentos >\\n   compartilhamentos > retenção 3s > alcance > comentários > curtidas.\\n3. Compare posts ENTRE SI na mesma semana (relativo, não absoluto).\\n4. Hipóteses devem ser testáveis na próxima semana (uma variável por vez).\\n5. A recomendação final deve ser específica o suficiente para virar\\n   instrução direta de produção (ex: \\\"priorizar padrão X, evitar horário Y\\\").\\n\\nSAÍDA: APENAS JSON válido:\\n{\\\"padroesVencedores\\\":[{\\\"padrao\\\":\\\"...\\\",\\\"evidencia\\\":\\\"...\\\"}],\\n\\\"padroesPerdedores\\\":[{\\\"padrao\\\":\\\"...\\\",\\\"evidencia\\\":\\\"...\\\"}],\\n\\\"hipoteses\\\":[\\\"...\\\"],\\n\\\"recomendacaoProximaSemana\\\":\\\"...\\\"}\\n\\nEXEMPLO:\\nENTRADA (métricas da semana):\\n[\\n {\\\"post\\\":\\\"P1\\\",\\\"padrao\\\":\\\"lista numerada\\\",\\\"formato\\\":\\\"carrossel\\\",\\\"alcance\\\":12400,\\\"salvamentos\\\":890,\\\"compartilhamentos\\\":210,\\\"retention3s\\\":null,\\\"follows\\\":65},\\n {\\\"post\\\":\\\"P2\\\",\\\"padrao\\\":\\\"pergunta provocativa\\\",\\\"formato\\\":\\\"reel\\\",\\\"alcance\\\":8200,\\\"salvamentos\\\":140,\\\"compartilhamentos\\\":95,\\\"retention3s\\\":0.38,\\\"follows\\\":12},\\n {\\\"post\\\":\\\"P3\\\",\\\"padrao\\\":\\\"contraste\\\",\\\"formato\\\":\\\"reel\\\",\\\"alcance\\\":21000,\\\"salvamentos\\\":310,\\\"compartilhamentos\\\":640,\\\"retention3s\\\":0.61,\\\"follows\\\":180}\\n]\\n\\nSAÍDA:\\n{\\\"padroesVencedores\\\":[\\n{\\\"padrao\\\":\\\"contraste em Reel\\\",\\\"evidencia\\\":\\\"P3 teve 640 compartilhamentos (3x P1) e retention3s de 61%, muito acima dos 38% de P2\\\"},\\n{\\\"padrao\\\":\\\"carrossel para salvamento\\\",\\\"evidencia\\\":\\\"P1 gerou 890 salvamentos, o maior da semana, apesar de alcance intermediário — formato de referência tem alta taxa de guarda\\\"}\\n],\\n\\\"padroesPerdedores\\\":[\\n{\\\"padrao\\\":\\\"pergunta provocativa em Reel\\\",\\\"evidencia\\\":\\\"P2 teve a pior retenção (38%) e apenas 140 salvamentos com 8.200 de alcance — o gancho em forma de pergunta não sustentou os 3s iniciais\\\"}\\n],\\n\\\"hipoteses\\\":[\\n\\\"Reels com estrutura de contraste retêm melhor porque o conflito aparece nos primeiros 3s — testar 2 Reels de contraste na próxima semana\\\",\\n\\\"Carrosséis convertem mais em salvamentos do que em alcance — testar carrossel com gancho de contraste para combinar os dois comportamentos\\\"\\n],\\n\\\"recomendacaoProximaSemana\\\":\\\"Produzir 2 Reels com padrão contraste e 1 carrossel com gancho de contraste. Evitar ganchos em formato de pergunta até novo teste. Publicar no mesmo horário de P3 para isolar a variável de padrão.\\\"}\\n\\nAGORA ANALISE AS MÉTRICAS:\\n{{metricas}}\";\nconst prompt = PROMPT.replace('{{metricas}}', JSON.stringify(rows, null, 1));\n\nreturn [{ json: { suficiente: true, prompt, totalPosts: rows.length } }];"
+      }
+    },
+    {
+      "id": "c11",
+      "name": "Dados Suficientes?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        -160
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c11-c1",
+              "leftValue": "={{ $json.suficiente }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c12",
+      "name": "Claude - Relatório Semanal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        940,
+        -160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.ANTHROPIC_API_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 4096, messages: [{ role: 'user', content: $json.prompt }] }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "c13",
+      "name": "Parse e Montar INSERT",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1160,
+        -160
+      ],
+      "parameters": {
+        "jsCode": "// Escape de literal SQL. Apóstrofo em gancho (\"Ninguém 'te' conta\") quebra\n// qualquer INSERT montado por interpolação — por isso todo texto passa aqui.\nconst q = (v) => (v === null || v === undefined || v === '' ? 'NULL' : \"'\" + String(v).replace(/'/g, \"''\") + \"'\");\nconst n = (v) => (v === null || v === undefined || v === '' || isNaN(Number(v)) ? 'NULL' : String(Number(v)));\n\nconst raw = $input.first().json;\nconst texto = (raw.content || []).filter(b => b.type === 'text').map(b => b.text).join('')\n  .replace(/```(?:json)?/gi, '').trim();\n\nlet rel;\ntry { rel = JSON.parse(texto); }\ncatch (e) { throw new Error('Relatório em JSON inválido: ' + texto.slice(0, 300)); }\n\nif (!rel.recomendacaoProximaSemana) throw new Error('Relatório sem recomendação: ' + texto.slice(0, 300));\n\n// A recomendação entra na fila de pauta com prioridade 10 e as hipóteses com 5:\n// é isso que fecha o loop — o relatório define o que o Workflow A produz.\nconst pautas = [\n  { tema: rel.recomendacaoProximaSemana, prioridade: 10 },\n  ...(rel.hipoteses || []).slice(0, 3).map(h => ({ tema: h, prioridade: 5 })),\n];\n\nconst valores = pautas\n  .map(p => `(${q(String(p.tema).slice(0, 500))}, (SELECT id FROM nichos WHERE status = 'ativo' ORDER BY score DESC NULLS LAST LIMIT 1), 'pendente', ${p.prioridade}, NOW())`)\n  .join(',\\n');\n\nconst sql = `INSERT INTO topicos (tema, nicho_id, status, prioridade, criado_em) VALUES ${valores} RETURNING id;`;\nreturn [{ json: { sql, pautas: pautas.length, relatorio: rel } }];"
+      }
+    },
+    {
+      "id": "c14",
+      "name": "Realimentar Tópicos",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1380,
+        -160
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql }}",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "Postgres DB"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule 07:00": {
+      "main": [
+        [
+          {
+            "node": "Ler Credenciais",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ler Credenciais": {
+      "main": [
+        [
+          {
+            "node": "Posts da Semana",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Posts da Semana": {
+      "main": [
+        [
+          {
+            "node": "Um Post Por Vez",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Um Post Por Vez": {
+      "main": [
+        [
+          {
+            "node": "É Domingo?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Graph API Insights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Graph API Insights": {
+      "main": [
+        [
+          {
+            "node": "Normalizar e Montar INSERT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar e Montar INSERT": {
+      "main": [
+        [
+          {
+            "node": "Salvar Métrica",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salvar Métrica": {
+      "main": [
+        [
+          {
+            "node": "Um Post Por Vez",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "É Domingo?": {
+      "main": [
+        [
+          {
+            "node": "Métricas Consolidadas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Métricas Consolidadas": {
+      "main": [
+        [
+          {
+            "node": "Preparar Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Payload": {
+      "main": [
+        [
+          {
+            "node": "Dados Suficientes?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dados Suficientes?": {
+      "main": [
+        [
+          {
+            "node": "Claude - Relatório Semanal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude - Relatório Semanal": {
+      "main": [
+        [
+          {
+            "node": "Parse e Montar INSERT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse e Montar INSERT": {
+      "main": [
+        [
+          {
+            "node": "Realimentar Tópicos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
