@@ -28,6 +28,7 @@
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { MODELO_PADRAO } from "../src/lib/ai.js";
 import {
   decomposeViralPrompt,
   gerarCopyPrompt,
@@ -239,8 +240,8 @@ return [{ json: { prompt, tema: topico.tema, nichoId: topico.nicho_id, topicoId:
       sendBody: true,
       specifyBody: "json",
       // max_tokens 4096: com 2000 as 3 variações truncavam no meio do JSON.
-      jsonBody:
-        "={{ JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 4096, messages: [{ role: 'user', content: $json.prompt }] }) }}",
+      // Modelo vem de src/lib/ai.ts — dashboard e n8n não podem divergir aqui.
+      jsonBody: `={{ JSON.stringify({ model: '${MODELO_PADRAO.roteiro}', max_tokens: 4096, messages: [{ role: 'user', content: $json.prompt }] }) }}`,
       options: { response: { response: { neverError: false } } },
     }),
     code(
@@ -718,8 +719,7 @@ return [{ json: { suficiente: true, prompt, totalPosts: rows.length } }];`,
       },
       sendBody: true,
       specifyBody: "json",
-      jsonBody:
-        "={{ JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 4096, messages: [{ role: 'user', content: $json.prompt }] }) }}",
+      jsonBody: `={{ JSON.stringify({ model: '${MODELO_PADRAO.relatorio}', max_tokens: 4096, messages: [{ role: 'user', content: $json.prompt }] }) }}`,
       options: {},
     }),
     code(

@@ -17,11 +17,30 @@ import type { z } from "zod";
 
 export type TarefaIA = "roteiro" | "copy" | "decomposicao" | "relatorio";
 
-const MODELO_PADRAO: Record<TarefaIA, string> = {
-  roteiro: "claude-sonnet-4-5",
-  copy: "claude-sonnet-4-5",
-  decomposicao: "claude-haiku-4-5",
-  relatorio: "claude-sonnet-4-5",
+/**
+ * Modelo por tarefa. Sobrescrevível por env (ANTHROPIC_MODEL_*).
+ *
+ * POR QUE NÃO OS MODELOS DA SPEC: ela fixava claude-sonnet-4-5 e
+ * claude-haiku-4-5. Os dois continuam ATIVOS, mas as datas de aposentadoria
+ * publicadas por Anthropic são "não antes de 29/09/2026" (Sonnet 4.5) e
+ * "não antes de 15/10/2026" (Haiku 4.5) — ou seja, semanas, não anos. Um alias
+ * aposentado vira 404 no meio de um roteiro, às 06h, dentro do Workflow A, onde
+ * ninguém está olhando.
+ *
+ * Sonnet 5 é o modelo corrente e não tem data anunciada.
+ *
+ * Se quiser o custo menor do Haiku na decomposição (a tarefa mais simples das
+ * quatro: extrair estrutura de uma transcrição), use o snapshot datado, não o
+ * alias flutuante:
+ *   ANTHROPIC_MODEL_DECOMPOSICAO="claude-haiku-4-5-20251001"
+ *
+ * Lista corrente: https://platform.claude.com/docs/en/models/overview
+ */
+export const MODELO_PADRAO: Record<TarefaIA, string> = {
+  roteiro: "claude-sonnet-5",
+  copy: "claude-sonnet-5",
+  decomposicao: "claude-sonnet-5",
+  relatorio: "claude-sonnet-5",
 };
 
 const ENV_MODELO: Record<TarefaIA, string> = {
