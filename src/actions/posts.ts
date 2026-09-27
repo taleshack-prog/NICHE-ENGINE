@@ -305,6 +305,33 @@ export async function aplicarRoteiro(entrada: unknown): Promise<ActionResult<{ i
   });
 }
 
+/**
+ * Blocos de hashtags dos últimos posts do nicho, para o prompt não repetir.
+ *
+ * Bloco idêntico em posts seguidos é exatamente o padrão que o Instagram trata
+ * como spam — e é o resultado natural de pedir hashtags "do nicho" a um modelo
+ * sem contexto do que já foi usado: ele converge para o mesmo conjunto óbvio
+ * toda vez.
+ */
+async function hashtagsRecentesDoNicho(nichoId: string, excetoPostId: string): Promise<string> {
+  const posts = await prisma.post.findMany({
+    where: { nichoId, id: { not: excetoPostId }, hashtags: { not: null } },
+    orderBy: { criadoEm: "desc" },
+    take: 5,
+    select: { titulo: true, hashtags: true },
+  });
+
+  const blocos = posts
+    .map((p) => ({ titulo: p.titulo, tags: lerHashtags(p.hashtags) }))
+    .filter((b) => b.tags.length > 0);
+
+  if (blocos.length === 0) return "(nenhum post com hashtags ainda neste nicho)";
+
+  return blocos
+    .map((b) => `- "${b.titulo.slice(0, 60)}": ${b.tags.join(" ")}`)
+    .join("\n");
+}
+
 export async function gerarCopy(
   entrada: unknown,
 ): Promise<ActionResult<{ legenda: string; hashtags: string[]; coverText: string }>> {
@@ -325,6 +352,7 @@ export async function gerarCopy(
       roteiro: post.roteiro,
       nicho,
       persona: post.nicho.persona ?? "(persona não definida para este nicho)",
+      hashtagsRecentes: await hashtagsRecentesDoNicho(post.nichoId, post.id),
     });
 
     const r = await callClaudeStructured(prompt, gerarCopySchema, {

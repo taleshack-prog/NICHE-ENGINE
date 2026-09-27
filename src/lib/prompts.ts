@@ -170,23 +170,33 @@ REGRAS OBRIGATÓRIAS:
    - 2 long-tail (frases compostas, baixa competição)
    Sem hashtag genérica de "viral" (#fyp, #viral, #explore são proibidas).
 3. COVER TEXT: máximo 6 palavras, legível em thumbnail pequena, caixa alta.
+4. O EXEMPLO ABAIXO ENSINA FORMATO, NÃO CONTEÚDO. Ele é de outro nicho de
+   propósito. Nunca reaproveite a legenda, as hashtags nem o cover text dele —
+   se o seu resultado contiver qualquer hashtag do exemplo, você errou.
+5. NÃO REPITA O BLOCO DE HASHTAGS dos posts recentes deste nicho (listados
+   abaixo). No máximo 4 hashtags em comum com qualquer bloco anterior: bloco
+   idêntico em posts seguidos é o padrão que o Instagram trata como spam.
+
+HASHTAGS JÁ USADAS NOS POSTS RECENTES DESTE NICHO:
+{{hashtagsRecentes}}
 
 SAÍDA: APENAS JSON válido:
 {"legenda":"...","hashtags":["..."],"coverText":"..."}
 
-EXEMPLO:
+EXEMPLO (nicho deliberadamente distante — copie a ESTRUTURA, nunca as palavras):
 ENTRADA:
-roteiro: "Por que 90% dos iniciantes em cripto perdem dinheiro: eles compram
-no topo por FOMO, não entendem ciclos de mercado e vendem no pânico..."
-nicho: "finanças e criptomoedas"
-persona: "homem, 25-40 anos, começou a investir recentemente, medo de perder dinheiro"
+roteiro: "Sua samambaia não está morrendo de sede. Está se afogando. A maioria
+rega por calendário, não por necessidade. Enfia o dedo dois centímetros na terra:
+saiu úmido, não rega hoje..."
+nicho: "jardinagem em apartamento"
+persona: "mulher, 25-45 anos, primeira planta da vida, medo de matar"
 
 SAÍDA:
-{"legenda":"O erro não é comprar. É quando.\\n\\nQuem entra no topo paga o preço do entusiasmo. Quem entende ciclo paga o preço da paciência — e é bem mais barato.\\n\\nCiclo não é previsão. É contexto: onde o mercado está em relação ao próprio histórico.\\n\\nSem esse contexto, toda decisão vira reação.",
-"hashtags":["#investimentos","#criptomoedas","#financas","#bitcoin","#mercadocripto",
-"#educacaofinanceira","#carteiradigital","#analisedemercado","#comoinvestirsemperder",
-"#criptoparainiciantes"],
-"coverText":"90% PERDEM POR ISSO"}
+{"legenda":"Sua planta não morreu de sede. Morreu de excesso.\\n\\nRegar por calendário é regar pela sua rotina, não pela da planta. Elas não têm segunda-feira.\\n\\nO teste do dedo custa dois segundos: dois centímetros na terra, saiu úmido, espera.\\n\\nRaiz encharcada apodrece em silêncio — quando a folha amarela, já faz uma semana.",
+"hashtags":["#plantas","#jardinagem","#casa","#plantasdeapartamento","#samambaia",
+"#cuidadocomplantas","#jardimdeapartamento","#plantasfaceis",
+"#comoregarplantacorretamente","#primeiraplantadavida"],
+"coverText":"REGAR DEMAIS MATA"}
 
 AGORA GERE A COPY PARA:
 roteiro: {{roteiro}}

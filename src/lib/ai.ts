@@ -50,6 +50,25 @@ const ENV_MODELO: Record<TarefaIA, string> = {
   relatorio: "ANTHROPIC_MODEL_RELATORIO",
 };
 
+/**
+ * Temperatura por tarefa. Nem toda chamada quer a mesma coisa.
+ *
+ * Roteiro e copy são geração: variação é o produto. Se dois roteiros do mesmo
+ * tema saírem iguais, a ferramenta não serve.
+ *
+ * Decomposição e relatório são CLASSIFICAÇÃO e ANÁLISE. Ali variação é defeito:
+ * a mesma transcrição caindo em "contraste" hoje e "mito vs realidade" amanhã
+ * fragmenta o vocabulário do swipe file por uma porta que nenhuma canonização
+ * pega — os dois rótulos existem e os dois são defensáveis. O mesmo vale para o
+ * relatório: conclusão sobre números não deveria mudar entre execuções.
+ */
+const TEMPERATURA_PADRAO: Record<TarefaIA, number> = {
+  roteiro: 1,
+  copy: 1,
+  decomposicao: 0.2,
+  relatorio: 0.2,
+};
+
 export class IAIndisponivelError extends Error {
   constructor() {
     super(
@@ -106,7 +125,7 @@ export async function callClaudeStructured<T>(
   const resposta = await cliente().messages.create({
     model: modeloPara(opts.tarefa),
     max_tokens: opts.maxTokens ?? 4096,
-    temperature: opts.temperature ?? 1,
+    temperature: opts.temperature ?? TEMPERATURA_PADRAO[opts.tarefa],
     messages: [{ role: "user", content: prompt }],
   });
 
