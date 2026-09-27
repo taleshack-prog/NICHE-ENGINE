@@ -101,13 +101,29 @@ reinicie o `npm run dev`.
 
 **`P3019: the datasource provider postgresql ... does not match ... migration_lock.toml, sqlite`**
 Sobrou uma pasta `prisma/migrations/` de antes da migração para PostgreSQL. Ela
-nunca foi versionada, então `git pull` não a remove — e o `migration_lock.toml`
-dentro dela trava o provider:
+nunca foi versionada, então `git pull` não a remove. Confirme antes de apagar:
 
 ```bash
+cat prisma/migrations/migration_lock.toml   # só siga se disser provider = "sqlite"
 rm -rf prisma/migrations
 npm run setup
 ```
+
+⚠️ Esse `rm -rf` serve **uma vez só**, para a pasta legada de SQLite. Repetir
+depois apaga a migração válida e cai no caso abaixo.
+
+**`Drift detected` / `migration(s) are applied to the database but missing from the local migrations directory`**
+O banco tem as tabelas, mas o arquivo da migração que as criou não está mais em
+`prisma/migrations/`. Como em dev os dados vêm todos do seed, o caminho curto é
+recriar a história do zero:
+
+```bash
+npx prisma migrate reset --force --skip-seed   # derruba o schema; não roda o seed
+npm run setup                                  # recria a migração e semeia
+```
+
+O `--skip-seed` importa: sem migração aplicada não existem tabelas, e o seed
+falharia no meio.
 
 ---
 
