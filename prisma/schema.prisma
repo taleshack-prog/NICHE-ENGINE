@@ -1,0 +1,166 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// NICHE ENGINE — schema de dados
+//
+// DECISÕES DE COMPATIBILIDADE (divergem da spec original de propósito — leia):
+//
+// 1. @@map / @map em snake_case
+//    Os workflows n8n (A, B, C) escrevem SQL cru contra `posts`, `nichos`,
+//    `templates_virais`, `metricas`, `midia_paths`, `nicho_id`, `ig_post_id`…
+//    O Prisma, por padrão, criaria `Post`, `midiaPaths`, `nichoId`. Sem os
+//    mapeamentos abaixo TODO SQL dos workflows falha com "relation does not
+//    exist". O código TypeScript continua usando camelCase.
+//
+// 2. estrutura / midiaPaths / hashtags são String (JSON serializado), não Json
+//    Em PostgreSQL o tipo Json do Prisma vira jsonb, e o driver `pg` devolve
+//    objeto JS já desserializado. O nó Code do Workflow B faz
+//    `JSON.parse(post.midia_paths || '[]')` — que estoura em objeto. Guardando
+//    como TEXT o comportamento é idêntico em SQLite e PostgreSQL e os workflows
+//    funcionam como escritos. Use os helpers de src/lib/json-fields.ts.
+//
+// 3. onDelete explícito
+//    Sem ele, apagar um Post com métricas viola FK. Métrica é dado derivado →
+//    Cascade. Template é referência histórica → SetNull.
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // Dev: sqlite. Prod: troque para "postgresql" e rode `prisma migrate deploy`.
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Nicho {
+  id            String   @id @default(cuid())
+  nome          String
+  subNicho      String?  @map("sub_nicho")
+  cpmEstimado   Float?   @map("cpm_estimado") // USD por 1k impressões
+  demandaPerene Int?     @map("demanda_perene") // score 1-10
+  concorrencia  Int? // score 1-10 (10 = saturado)
+  score         Float? // demanda*2 - concorrencia + cpm/5
+  status        String   @default("candidato") // candidato|ativo|descartado
+  persona       String?
+  criadoEm      DateTime @default(now()) @map("criado_em")
+
+  posts     Post[]
+  templates TemplateViral[]
+  topicos   Topico[]
+
+  @@index([status])
+  @@index([score])
+  @@map("nichos")
+}
+
+model TemplateViral {
+  id          String   @id @default(cuid())
+  fonte       String // link do Reel original
+  transcricao String?
+  gancho      String
+  estrutura   String   @default("{}") // JSON: {hook, retention, loop, cta}
+  padrao      String // ex: "lista negativa", "pergunta provocativa"
+  performance Int? // views do original
+  nichoId     String   @map("nicho_id")
+  criadoEm    DateTime @default(now()) @map("criado_em")
+
+  nicho Nicho  @relation(fields: [nichoId], references: [id], onDelete: Cascade)
+  posts Post[]
+
+  @@index([nichoId])
+  @@index([padrao])
+  @@map("templates_virais")
+}
+
+model Post {
+  id           String    @id @default(cuid())
+  titulo       String
+  formato      String // carrossel|reel|static
+  roteiro      String?
+  legenda      String?
+  hashtags     String? // JSON: ["#a","#b"]
+  coverText    String?   @map("cover_text")
+  midiaPaths   String?   @map("midia_paths") // JSON: [{tipo,url,promptUsado}]
+  status       String    @default("rascunho") // rascunho|produzindo|pronto|agendado|publicado
+  agendadoPara DateTime? @map("agendado_para")
+  publicadoEm  DateTime? @map("publicado_em")
+  igPostId     String?   @map("ig_post_id")
+  erroPublicacao String? @map("erro_publicacao")
+  nichoId      String    @map("nicho_id")
+  templateId   String?   @map("template_id")
+  criadoEm     DateTime  @default(now()) @map("criado_em")
+  atualizadoEm DateTime  @updatedAt @map("atualizado_em")
+
+  nicho    Nicho          @relation(fields: [nichoId], references: [id], onDelete: Cascade)
+  template TemplateViral? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  metricas Metrica[]
+
+  @@index([status])
+  @@index([agendadoPara])
+  @@index([nichoId])
+  @@index([publicadoEm])
+  @@map("posts")
+}
+
+model Metrica {
+  id                String   @id @default(cuid())
+  postId            String   @map("post_id")
+  dataColeta        DateTime @default(now()) @map("data_coleta")
+  // Dia da coleta em texto (YYYY-MM-DD). Existe para dar idempotência:
+  // o Workflow C roda diariamente e sem isto duas execuções no mesmo dia
+  // duplicariam a linha, inflando qualquer agregação.
+  dataRef           String   @map("data_ref")
+  alcance           Int?
+  impressoes        Int?
+  salvamentos       Int?
+  compartilhamentos Int?
+  comentarios       Int?
+  followsGanhos     Int?     @map("follows_ganhos")
+  retention3s       Float?   @map("retention_3s") // % que passou dos 3s (Reels)
+  watchRate         Float?   @map("watch_rate") // % médio assistido
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, dataRef])
+  @@index([dataColeta])
+  @@map("metricas")
+}
+
+model Gancho {
+  id        String   @id @default(cuid())
+  texto     String
+  categoria String // pergunta|negacao|numero|story|contraste
+  usos      Int      @default(0)
+  vitorias  Int      @default(0) // posts que performaram top 10%
+  criadoEm  DateTime @default(now()) @map("criado_em")
+
+  @@index([categoria])
+  @@map("ganchos")
+}
+
+// ── Tabelas que a spec definia fora do Prisma ────────────────────────────────
+// Trazidas para dentro do schema: assim `prisma migrate` é a única fonte de
+// verdade do banco e não existe passo manual de SQL que alguém esqueça.
+// O SQL equivalente continua em sql/001_extra_tables.sql para quem só roda n8n.
+
+model Topico {
+  id         Int      @id @default(autoincrement())
+  tema       String
+  nichoId    String?  @map("nicho_id")
+  status     String   @default("pendente") // pendente|em_producao|concluido
+  prioridade Int      @default(0)
+  criadoEm   DateTime @default(now()) @map("criado_em")
+
+  nicho Nicho? @relation(fields: [nichoId], references: [id], onDelete: SetNull)
+
+  @@index([status, prioridade])
+  @@map("topicos")
+}
+
+model Config {
+  chave        String   @id
+  valor        String
+  atualizadoEm DateTime @default(now()) @updatedAt @map("atualizado_em")
+
+  @@map("config")
+}
