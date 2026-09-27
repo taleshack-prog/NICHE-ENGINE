@@ -357,7 +357,7 @@ export async function gerarCopy(
 
     const r = await callClaudeStructured(prompt, gerarCopySchema, {
       tarefa: "copy",
-      maxTokens: 2000,
+      maxTokens: 4096,
     });
 
     await prisma.post.update({

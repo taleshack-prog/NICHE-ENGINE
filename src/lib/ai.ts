@@ -115,6 +115,18 @@ function extrairJson(texto: string): string {
   return semFences.slice(inicio, fim + 1);
 }
 
+/**
+ * Quantas vezes tentar antes de devolver erro ao usuário.
+ *
+ * Saída fora do formato é ruído estatístico, não defeito permanente: o modelo
+ * erra a vírgula, estoura uma contagem de palavras, devolve 7 hashtags em vez
+ * de 8. Mostrar isso ao usuário como falha é transferir para ele um problema
+ * que a própria chamada resolve — a segunda tentativa recebe o erro EXATO da
+ * validação e quase sempre acerta. Duas tentativas, não mais: se errar de novo,
+ * o problema é o prompt, e aí o erro precisa aparecer mesmo.
+ */
+const TENTATIVAS = 2;
+
 export async function callClaudeStructured<T>(
   prompt: string,
   schema: z.ZodType<T>,
@@ -122,39 +134,63 @@ export async function callClaudeStructured<T>(
     tarefa: "roteiro",
   },
 ): Promise<T> {
-  const resposta = await cliente().messages.create({
-    model: modeloPara(opts.tarefa),
-    max_tokens: opts.maxTokens ?? 4096,
-    temperature: opts.temperature ?? TEMPERATURA_PADRAO[opts.tarefa],
-    messages: [{ role: "user", content: prompt }],
-  });
+  const mensagens: Anthropic.MessageParam[] = [{ role: "user", content: prompt }];
+  let ultimoErro: IAFormatoInvalidoError | null = null;
 
-  const texto = resposta.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("")
-    .trim();
+  for (let tentativa = 1; tentativa <= TENTATIVAS; tentativa++) {
+    const resposta = await cliente().messages.create({
+      model: modeloPara(opts.tarefa),
+      max_tokens: opts.maxTokens ?? 4096,
+      temperature: opts.temperature ?? TEMPERATURA_PADRAO[opts.tarefa],
+      messages: mensagens,
+    });
 
-  if (!texto) {
-    throw new IAFormatoInvalidoError("resposta sem bloco de texto", JSON.stringify(resposta));
+    const texto = resposta.content
+      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("")
+      .trim();
+
+    if (!texto) {
+      // Sem texto não há o que corrigir: repete a mesma pergunta.
+      ultimoErro = new IAFormatoInvalidoError(
+        "resposta sem bloco de texto",
+        JSON.stringify(resposta).slice(0, 1500),
+      );
+      continue;
+    }
+
+    try {
+      const cru: unknown = JSON.parse(extrairJson(texto));
+      const validado = schema.safeParse(cru);
+      if (validado.success) return validado.data;
+
+      const problemas = validado.error.issues
+        .map((i) => `${i.path.join(".") || "(raiz)"}: ${i.message}`)
+        .join("; ");
+      ultimoErro = new IAFormatoInvalidoError(problemas, texto.slice(0, 1500));
+    } catch (e) {
+      ultimoErro = new IAFormatoInvalidoError(
+        `JSON não parseável (${(e as Error).message})`,
+        texto.slice(0, 1500),
+      );
+    }
+
+    if (tentativa < TENTATIVAS) {
+      // A correção vai como turno de conversa, com o erro literal da validação.
+      // Repetir o prompt inteiro perderia o contexto do que exatamente falhou.
+      mensagens.push({ role: "assistant", content: texto });
+      mensagens.push({
+        role: "user",
+        content: [
+          `Sua resposta foi REJEITADA pela validação: ${ultimoErro.message}`,
+          "",
+          "Responda de novo corrigindo exatamente esse problema.",
+          "APENAS o JSON válido no formato pedido — sem markdown, sem comentários, sem explicação.",
+        ].join("\n"),
+      });
+    }
   }
 
-  let cru: unknown;
-  try {
-    cru = JSON.parse(extrairJson(texto));
-  } catch (e) {
-    throw new IAFormatoInvalidoError(
-      `JSON não parseável (${(e as Error).message})`,
-      texto.slice(0, 1500),
-    );
-  }
-
-  const validado = schema.safeParse(cru);
-  if (!validado.success) {
-    const problemas = validado.error.issues
-      .map((i) => `${i.path.join(".") || "(raiz)"}: ${i.message}`)
-      .join("; ");
-    throw new IAFormatoInvalidoError(problemas, texto.slice(0, 1500));
-  }
-  return validado.data;
+  throw ultimoErro ?? new IAFormatoInvalidoError("falha desconhecida", "");
 }

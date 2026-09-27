@@ -173,9 +173,11 @@ REGRAS OBRIGATÓRIAS:
 4. O EXEMPLO ABAIXO ENSINA FORMATO, NÃO CONTEÚDO. Ele é de outro nicho de
    propósito. Nunca reaproveite a legenda, as hashtags nem o cover text dele —
    se o seu resultado contiver qualquer hashtag do exemplo, você errou.
-5. NÃO REPITA O BLOCO DE HASHTAGS dos posts recentes deste nicho (listados
-   abaixo). No máximo 4 hashtags em comum com qualquer bloco anterior: bloco
-   idêntico em posts seguidos é o padrão que o Instagram trata como spam.
+5. VARIE O BLOCO DE HASHTAGS em relação aos posts recentes deste nicho
+   (listados abaixo). As 3 amplas PODEM repetir — são amplas justamente porque
+   servem a todo post do nicho. As 5 de nicho e as 2 long-tail devem ser
+   majoritariamente novas: bloco inteiro idêntico em posts seguidos é o padrão
+   que o Instagram trata como spam.
 
 HASHTAGS JÁ USADAS NOS POSTS RECENTES DESTE NICHO:
 {{hashtagsRecentes}}
