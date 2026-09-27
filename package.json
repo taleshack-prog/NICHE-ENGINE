@@ -10,6 +10,9 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
+    "db:up": "docker compose up -d --wait db",
+    "db:down": "docker compose down",
+    "db:psql": "docker compose exec db psql -U niche -d niche",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
@@ -17,7 +20,7 @@
     "db:reset": "prisma migrate reset --force",
     "n8n:gerar": "tsx n8n/gerar-workflows.mts",
     "n8n:validar": "node n8n/validar-workflows.mjs",
-    "setup": "prisma migrate dev --name init && npm run db:seed"
+    "setup": "npm run db:up && prisma migrate dev --name init && npm run db:seed"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.128.0",

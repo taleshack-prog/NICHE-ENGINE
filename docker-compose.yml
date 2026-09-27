@@ -1,0 +1,68 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Infra local do Niche Engine.
+#
+#   npm run db:up                      → só o PostgreSQL (o necessário para dev)
+#   docker compose --profile n8n up -d → PostgreSQL + n8n (para testar a Fase 5)
+#
+# O n8n fica atrás de um profile porque a Fase 5 é a última: subir n8n antes de
+# ter posts na fila só consome RAM.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: niche-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: niche
+      POSTGRES_PASSWORD: niche
+      # Dois bancos na mesma instância: `niche` é a aplicação, `n8n` é o estado
+      # interno do n8n (execuções, credenciais). Misturar os dois faria o
+      # `prisma migrate reset` apagar os workflows.
+      POSTGRES_DB: niche
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./docker/init-n8n-db.sql:/docker-entrypoint-initdb.d/10-init-n8n-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U niche -d niche"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: niche-n8n
+    profiles: ["n8n"]
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "5678:5678"
+    environment:
+      # Sem isto os nós não leem $env e as expressões dos workflows voltam vazias.
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      # A guarda de domingo do Workflow C usa new Date().getDay().
+      GENERIC_TIMEZONE: America/Sao_Paulo
+      TZ: America/Sao_Paulo
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: db
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: niche
+      DB_POSTGRESDB_PASSWORD: niche
+      N8N_RUNNERS_ENABLED: "true"
+      # Repassadas do .env do host para os nós HTTP dos workflows.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      FAL_KEY: ${FAL_KEY:-}
+      META_APP_ID: ${META_APP_ID:-}
+      META_APP_SECRET: ${META_APP_SECRET:-}
+    volumes:
+      - n8n-data:/home/node/.n8n
+      # Workflows visíveis de dentro do container para importar sem upload.
+      - ./n8n:/workflows:ro
+
+volumes:
+  db-data:
+  n8n-data:

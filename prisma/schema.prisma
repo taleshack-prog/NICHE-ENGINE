@@ -27,8 +27,18 @@ generator client {
 }
 
 datasource db {
-  // Dev: sqlite. Prod: troque para "postgresql" e rode `prisma migrate deploy`.
-  provider = "sqlite"
+  // PostgreSQL em dev E em prod, de propósito.
+  //
+  // A spec pedia SQLite em dev, mas isso quebrava duas coisas:
+  //   1. `migration_lock.toml` fica travado no provider — uma migração criada em
+  //      SQLite não se aplica em PostgreSQL, então `prisma migrate deploy` em
+  //      produção falhava com erro de provider incompatível;
+  //   2. todo SQL dos workflows n8n é exclusivo de PostgreSQL
+  //      (gen_random_uuid(), INTERVAL, ON CONFLICT, string_agg) — contra SQLite
+  //      a Fase 5 seria intestável no ambiente onde ela é desenvolvida.
+  //
+  // O Postgres de dev sobe com `npm run db:up` (docker-compose.yml).
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -141,7 +151,8 @@ model Gancho {
 // ── Tabelas que a spec definia fora do Prisma ────────────────────────────────
 // Trazidas para dentro do schema: assim `prisma migrate` é a única fonte de
 // verdade do banco e não existe passo manual de SQL que alguém esqueça.
-// O SQL equivalente continua em sql/001_extra_tables.sql para quem só roda n8n.
+// Os índices parciais que o Prisma não gera, e a semeadura da tabela `config`,
+// ficam em sql/001_config_seed.sql — rodar depois da migração.
 
 model Topico {
   id         Int      @id @default(autoincrement())

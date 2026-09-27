@@ -14,7 +14,7 @@ Posts vencedores (top 10% por score de salvamentos/compartilhamentos) voltam ao 
 | Framework | Next.js 16 (App Router) + React 19 |
 | Linguagem | TypeScript estrito (`strict`, `noUncheckedIndexedAccess`, zero `any`) |
 | Estilo | Tailwind CSS 4 + design system próprio (tema dark) |
-| Dados | Prisma 6 · SQLite em dev · PostgreSQL em prod |
+| Dados | Prisma 6 · PostgreSQL 16 (dev e prod) |
 | Mutações | Server Actions com validação Zod |
 | Auth | Single-user: cookie httpOnly assinado (JWT HS256 via `jose`) |
 | IA | `@anthropic-ai/sdk` — roteiro, copy, decomposição viral, relatório |
@@ -24,14 +24,21 @@ Posts vencedores (top 10% por score de salvamentos/compartilhamentos) voltam ao 
 
 ---
 
-## Setup em 4 comandos
+## Setup
+
+Requisitos: Node ≥ 20.12 e Docker (só para o PostgreSQL local).
 
 ```bash
 npm install
-cp .env.example .env          # edite: AUTH_SECRET é o único obrigatório fora do dev
-npm run setup                 # prisma migrate dev --name init && seed de exemplo
+cp .env.example .env          # AUTH_SECRET é o único obrigatório fora do dev
+npm run setup                 # sobe o Postgres, cria a migração inicial e semeia
 npm run dev                   # http://localhost:3000
 ```
+
+O `npm run setup` encadeia três coisas: `docker compose up -d --wait db` (o
+`--wait` importa — `up -d` volta antes do Postgres aceitar conexão e o
+`migrate dev` falharia com ECONNREFUSED), depois `prisma migrate dev --name init`
+e o seed.
 
 O `.env.example` já vem com `AUTH_DISABLED="true"`, que **ignora o login em dev**.
 Para exigir login, coloque `AUTH_DISABLED="false"` e preencha:
@@ -54,10 +61,14 @@ nunca quebra a aplicação.
 | `npm run build` | `prisma generate` + build de produção |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | `eslint .` (flat config — `next lint` foi removido no Next 16) |
+| `npm run db:up` / `db:down` | sobe / derruba o PostgreSQL local |
+| `npm run db:psql` | abre o psql no banco da aplicação |
 | `npm run db:migrate` | cria/aplica migração |
 | `npm run db:seed` | popula dados de exemplo (idempotente) |
 | `npm run db:studio` | Prisma Studio |
 | `npm run db:reset` | zera o banco e re-semeia |
+| `npm run n8n:gerar` | regera os workflows a partir de `src/lib/prompts.ts` |
+| `npm run n8n:validar` | valida os JSONs antes de importar no n8n |
 
 ---
 
@@ -86,26 +97,26 @@ Três decisões que divergem da spec original **de propósito** (comentadas no s
    `posts`, `midia_paths`, `nicho_id`. Sem os mapeamentos, todo SQL do n8n
    falharia com *relation does not exist*. O TypeScript continua em camelCase.
 2. **`estrutura`, `midiaPaths` e `hashtags` são `String` com JSON serializado, não `Json`.**
-   Em PostgreSQL o tipo `Json` do Prisma vira `jsonb` e o driver devolve objeto já
-   desserializado — o `JSON.parse(post.midia_paths)` do Workflow B estouraria.
-   Como TEXT, o comportamento é idêntico em SQLite e PostgreSQL. Use os helpers de
+   O tipo `Json` do Prisma vira `jsonb` e o driver devolve objeto já desserializado —
+   o `JSON.parse(post.midia_paths)` do Workflow B estouraria. Como TEXT, o
+   dashboard e o n8n leem o campo do mesmo jeito. Use os helpers de
    `src/lib/json-fields.ts`.
 3. **`Metrica` tem `dataRef` (YYYY-MM-DD) com unique `[postId, dataRef]`.**
    O Workflow C roda diariamente; sem isso, duas execuções no mesmo dia duplicariam
    a linha e inflariam qualquer soma de alcance.
+4. **PostgreSQL também em dev, não SQLite.** A spec pedia SQLite em dev, mas
+   `migration_lock.toml` trava o provider: uma migração criada em SQLite não se
+   aplica em PostgreSQL, então `prisma migrate deploy` em produção falhava. Pior,
+   todo SQL dos workflows n8n é exclusivo de PostgreSQL — contra SQLite a Fase 5
+   seria intestável no ambiente onde ela é desenvolvida.
 
 `Topico` e `Config` foram trazidos para dentro do Prisma (a spec os deixava como SQL
 manual) para que `prisma migrate` seja a única fonte de verdade do banco. O SQL
-equivalente, com os índices parciais que só o PostgreSQL aceita, está em `sql/`.
+com os índices parciais que o Prisma não gera está em `sql/001_config_seed.sql`.
 
-### Produção (PostgreSQL)
+### Produção
 
-```prisma
-datasource db {
-  provider = "postgresql"   // era "sqlite"
-  url      = env("DATABASE_URL")
-}
-```
+Mesmo provider, então só a URL muda:
 
 ```bash
 DATABASE_URL="postgresql://user:pass@host:5432/niche" npx prisma migrate deploy
@@ -147,10 +158,22 @@ A ordem importa: custo e burocracia crescem da esquerda para a direita.
 Após importar (n8n → Workflows → ⋯ → Import from File):
 
 - [ ] Selecionar a credencial Postgres real em cada nó marcado `REPLACE_ME`
-- [ ] `N8N_BLOCK_ENV_ACCESS_IN_NODE=false` no ambiente do n8n (ou trocar `$env` por credenciais Header Auth)
-- [ ] Fuso do servidor em `America/Sao_Paulo` (a guarda de domingo do Workflow C usa `getDay()`)
 - [ ] Testar cada workflow com **Execute Workflow** antes de ativar o cron
 - [ ] Ativar na ordem A → B → C → D
+
+Para testar localmente, o `docker-compose.yml` já traz um n8n configurado
+(`N8N_BLOCK_ENV_ACCESS_IN_NODE=false` e fuso `America/Sao_Paulo`, os dois ajustes
+que a spec listava como manuais), atrás de um profile para não consumir RAM antes
+da Fase 5:
+
+```bash
+docker compose --profile n8n up -d     # n8n em http://localhost:5678
+```
+
+Os workflows ficam montados em `/workflows` dentro do container, e a credencial
+Postgres a criar aponta para host `db`, banco `niche`, usuário/senha `niche`.
+O estado do n8n mora em um banco separado (`n8n`) na mesma instância — se
+compartilhasse o banco da aplicação, `npm run db:reset` apagaria os workflows.
 
 Os workflows deste repositório já vêm com as correções que a spec original listava
 como ajuste manual: token lido da tabela `config`, contador de aborto no polling,
