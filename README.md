@@ -99,6 +99,16 @@ Ou rode `npm run db:generate` manualmente depois de cada `npm install`.
 Client Prisma velho apontando para o banco antigo. `npm run db:generate` e
 reinicie o `npm run dev`.
 
+**`P3019: the datasource provider postgresql ... does not match ... migration_lock.toml, sqlite`**
+Sobrou uma pasta `prisma/migrations/` de antes da migração para PostgreSQL. Ela
+nunca foi versionada, então `git pull` não a remove — e o `migration_lock.toml`
+dentro dela trava o provider:
+
+```bash
+rm -rf prisma/migrations
+npm run setup
+```
+
 ---
 
 ## Telas
