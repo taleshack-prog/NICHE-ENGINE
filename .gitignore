@@ -1,0 +1,39 @@
+# dependências
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+
+# next
+/.next/
+/out/
+next-env.d.ts
+*.tsbuildinfo
+
+# produção
+/build
+
+# ambiente — NUNCA versionar chaves
+.env
+.env*.local
+.env.production
+
+# banco local (SQLite)
+/prisma/*.db
+/prisma/*.db-journal
+/prisma/dev.db*
+
+# mídia gerada localmente
+/public/midia/*
+!/public/midia/.gitkeep
+
+# logs / sistema
+npm-debug.log*
+yarn-error.log*
+.DS_Store
+*.pem
+
+# editor
+.vscode/*
+!.vscode/extensions.json
+.idea
