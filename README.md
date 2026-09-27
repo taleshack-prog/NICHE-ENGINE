@@ -70,6 +70,35 @@ nunca quebra a aplicação.
 | `npm run n8n:gerar` | regera os workflows a partir de `src/lib/prompts.ts` |
 | `npm run n8n:validar` | valida os JSONs antes de importar no n8n |
 
+### Problemas comuns
+
+**`failed to bind host port 0.0.0.0:5433: address already in use`**
+Outra coisa já ocupa a porta. Descubra o quê e escolha uma livre:
+
+```bash
+ss -ltnp | grep 543        # o que está escutando
+```
+
+Troque `DB_PORT` **e** a porta da `DATABASE_URL` no `.env` para a mesma porta livre
+e rode `npm run db:up` de novo. Dentro da rede do compose o Postgres continua na
+5432, então a credencial do n8n (host `db`, porta `5432`) não muda.
+
+**`npm warn allow-scripts ... not yet covered by allowScripts`**
+Seu npm está bloqueando scripts de instalação, e um deles é o `postinstall` do
+`@prisma/client`, que roda o `prisma generate`. Funciona por acidente — o
+`prisma migrate` também gera o client — mas depois de um `npm install` puro o
+client pode ficar velho. Autorize de uma vez:
+
+```bash
+npm approve-scripts @prisma/client @prisma/engines prisma esbuild
+```
+
+Ou rode `npm run db:generate` manualmente depois de cada `npm install`.
+
+**Páginas carregam mas com dados que não deviam existir**
+Client Prisma velho apontando para o banco antigo. `npm run db:generate` e
+reinicie o `npm run dev`.
+
 ---
 
 ## Telas

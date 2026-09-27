@@ -18,7 +18,11 @@ next-env.d.ts
 .env*.local
 .env.production
 
-# dados do Postgres local ficam em volume do Docker, não no repo
+# dados do Postgres local ficam em volume do Docker, não no repo.
+# As linhas de SQLite continuam aqui só como rede de proteção: quem rodou o
+# projeto antes da migração para Postgres tem um prisma/dev.db sobrando.
+/prisma/*.db
+/prisma/*.db-journal
 
 # mídia gerada localmente
 /public/midia/*

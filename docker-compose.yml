@@ -21,7 +21,11 @@ services:
       # `prisma migrate reset` apagar os workflows.
       POSTGRES_DB: niche
     ports:
-      - "5432:5432"
+      # Porta do HOST configurável pelo .env. Default 5433 e não 5432 de propósito:
+      # 5432 costuma estar ocupada por um Postgres de sistema ou de outro projeto,
+      # e o erro ("address already in use") aborta o setup inteiro.
+      # Dentro da rede do compose o Postgres continua na 5432 — o n8n usa host `db`.
+      - "${DB_PORT:-5433}:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
       - ./docker/init-n8n-db.sql:/docker-entrypoint-initdb.d/10-init-n8n-db.sql:ro
