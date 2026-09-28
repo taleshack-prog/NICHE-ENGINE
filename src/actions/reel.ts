@@ -75,7 +75,7 @@ export async function gerarReel(entrada: unknown): Promise<ActionResult<Resultad
     }
     if (post.formato !== "reel") {
       throw new Error(
-        "Este post não é Reel. Mude o formato para Reel no topo do editor e salve — para carrossel, use o botão Carrossel.",
+        `Este post está gravado como "${post.formato}". Mude o Formato para Reel no topo do editor e clique em Salvar — para carrossel, o botão é o Carrossel.`,
       );
     }
 

@@ -96,21 +96,37 @@ export function EditorPost({
   const cenasFeitas = post.midiaLista.filter((m) => m.papel === "cena").length;
   const slides = post.midiaLista.filter((m) => m.papel === "capa" || m.papel === "slide").length;
 
+  const campos = () => ({
+    id: post.id,
+    titulo,
+    formato,
+    roteiro: roteiro || null,
+    legenda: legenda || null,
+    coverText: coverText || null,
+    hashtags,
+    templateId: templateId || null,
+  });
+
   async function salvarCampos() {
-    await salvar.executar(
-      () =>
-        updatePost({
-          id: post.id,
-          titulo,
-          formato,
-          roteiro: roteiro || null,
-          legenda: legenda || null,
-          coverText: coverText || null,
-          hashtags,
-          templateId: templateId || null,
-        }),
-      { sucesso: "Post salvo.", aoConcluir: aoAtualizar },
-    );
+    await salvar.executar(() => updatePost(campos()), {
+      sucesso: "Post salvo.",
+      aoConcluir: aoAtualizar,
+    });
+  }
+
+  /**
+   * Grava o que está na tela antes de uma ação que lê do banco.
+   *
+   * POR QUE ISTO EXISTE: os botões de geração decidem se estão habilitados
+   * olhando o `formato` do FORMULÁRIO, e as Server Actions decidem se aceitam
+   * olhando o `formato` do BANCO. Trocar o select sem salvar deixava os dois em
+   * desacordo — o botão Reel ficava clicável e respondia "este post não é
+   * Reel", com a tela mostrando Reel. Pedir ao usuário que lembre de salvar é
+   * transferir para ele um problema que é do código.
+   */
+  async function garantirSalvo(): Promise<boolean> {
+    const r = await salvar.executar(() => updatePost(campos()), { aoConcluir: aoAtualizar });
+    return r !== null;
   }
 
   async function gerar() {
@@ -162,6 +178,8 @@ export function EditorPost({
       ? `Retomando: ${cenasFeitas} cenas e ${clipesFeitos} clipes já prontos serão reaproveitados. Continuar?`
       : "Gera narração, cenas, clipes, montagem e legenda. Leva alguns minutos e custa cerca de US$ 0,35 por 5 s de vídeo. Continuar?";
     if (!window.confirm(aviso)) return;
+
+    if (!(await garantirSalvo())) return;
 
     toast.info("Produzindo o Reel. Cada etapa é salva — se o navegador cair, clique de novo e ele continua.");
     const r = await midia.executar(() => gerarReel({ postId: post.id }), {
@@ -249,6 +267,8 @@ export function EditorPost({
     ) {
       return;
     }
+    if (!(await garantirSalvo())) return;
+
     toast.info("Quebrando o roteiro em slides e gerando as imagens — leva ~1 min.");
     const r = await midia.executar(() => gerarCarrossel({ postId: post.id }), {
       aoConcluir: aoAtualizar,
