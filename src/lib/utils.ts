@@ -48,10 +48,22 @@ export function diaRef(d: Date = new Date()): string {
   return `${y}-${m}-${dd}`;
 }
 
-export function inicioDaSemana(d: Date = new Date()): Date {
+/**
+ * Início da janela de 7 dias — a definição de "semana" do sistema inteiro.
+ *
+ * NÃO é semana-calendário, de propósito. A versão anterior devolvia o domingo
+ * 00:00 da semana corrente, e isso quebrava exatamente onde mais importa: o
+ * Workflow C gera o relatório semanal AOS DOMINGOS, o dia em que a semana-
+ * calendário acabou de começar. Na prática o relatório olhava para uma janela
+ * de algumas horas, não achava os 3 posts mínimos e se recusava a rodar — todo
+ * domingo, em silêncio.
+ *
+ * Janela móvel também é o que o SQL do Workflow C já usava
+ * (NOW() - INTERVAL '7 days'). Dashboard e automação agora concordam.
+ */
+export function inicioJanela7Dias(d: Date = new Date()): Date {
   const out = new Date(d);
-  const dia = out.getDay(); // 0 = domingo
-  out.setDate(out.getDate() - dia);
+  out.setDate(out.getDate() - 7);
   out.setHours(0, 0, 0, 0);
   return out;
 }

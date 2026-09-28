@@ -43,7 +43,7 @@ export default async function VisaoGeral() {
     <>
       <TituloPagina
         titulo="Visão geral"
-        descricao="Semana corrente (domingo a hoje) · métricas da última coleta de cada post"
+        descricao="Últimos 7 dias · métricas da última coleta de cada post"
       />
 
       {kpis.agendadosAtrasados.length > 0 ? (
@@ -108,7 +108,7 @@ export default async function VisaoGeral() {
         <div className="space-y-4">
           <Card>
             <CardCabecalho>
-              <CardTitulo>Melhor post da semana</CardTitulo>
+              <CardTitulo>Melhor post dos últimos 7 dias</CardTitulo>
             </CardCabecalho>
             <CardConteudo>
               {kpis.melhorPost ? (
@@ -127,7 +127,7 @@ export default async function VisaoGeral() {
                 </>
               ) : (
                 <p className="text-xs text-tenue">
-                  Nenhum post com métricas nesta semana.
+                  Nenhum post com métricas nos últimos 7 dias.
                 </p>
               )}
             </CardConteudo>

@@ -1,7 +1,7 @@
 import { prisma } from "./db";
 import { lerHashtags, lerMidia } from "./json-fields";
 import { corteTop10, scorePost } from "./scoring";
-import { inicioDaSemana } from "./utils";
+import { inicioJanela7Dias } from "./utils";
 
 /**
  * Leituras do dashboard. Concentradas aqui para que as páginas fiquem finas e
@@ -142,7 +142,7 @@ export type KpisSemana = {
 };
 
 export async function kpisSemana(): Promise<KpisSemana> {
-  const inicio = inicioDaSemana();
+  const inicio = inicioJanela7Dias();
   const agora = new Date();
   const fimDoDia = new Date(agora);
   fimDoDia.setHours(23, 59, 59, 999);

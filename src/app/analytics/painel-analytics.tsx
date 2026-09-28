@@ -221,7 +221,7 @@ function BlocoRelatorio({ r }: { r: ResultadoRelatorio }) {
         <CardConteudo className="p-4 text-sm text-alerta">
           {r.motivo}
           <span className="mt-1 block text-xs text-suave">
-            Posts com métricas nesta semana: {r.postsNaSemana}.
+            Posts com métricas nos últimos 7 dias: {r.postsNaJanela}.
           </span>
         </CardConteudo>
       </Card>

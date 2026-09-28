@@ -12,7 +12,7 @@ import {
   type RelatorioSemanal,
 } from "@/lib/prompts";
 import { normalizarRetencao, scorePost } from "@/lib/scoring";
-import { diaRef, inicioDaSemana } from "@/lib/utils";
+import { diaRef, inicioJanela7Dias } from "@/lib/utils";
 import { acao, idSchema, type ActionResult } from "./_shared";
 
 // ─────────────────────────────────────────────
@@ -144,7 +144,7 @@ export async function coletarMetricasAutomatico(): Promise<
 
 export type ResultadoRelatorio =
   | { gerado: true; relatorio: RelatorioSemanal; topicosCriados: number }
-  | { gerado: false; motivo: string; postsNaSemana: number };
+  | { gerado: false; motivo: string; postsNaJanela: number };
 
 /**
  * Relatório semanal de IA (Fase 4) + realimentação da tabela `topicos`.
@@ -154,7 +154,7 @@ export type ResultadoRelatorio =
  */
 export async function relatorioSemanal(): Promise<ActionResult<ResultadoRelatorio>> {
   return acao(z.object({}), {}, async () => {
-    const inicio = inicioDaSemana();
+    const inicio = inicioJanela7Dias();
 
     const posts = await prisma.post.findMany({
       where: { publicadoEm: { gte: inicio } },
@@ -171,8 +171,8 @@ export async function relatorioSemanal(): Promise<ActionResult<ResultadoRelatori
       return {
         gerado: false,
         motivo:
-          "São necessários pelo menos 3 posts com métricas na semana. Com menos que isso, qualquer padrão apontado seria ruído.",
-        postsNaSemana: comMetrica.length,
+          "São necessários pelo menos 3 posts com métricas nos últimos 7 dias. Com menos que isso, qualquer padrão apontado seria ruído.",
+        postsNaJanela: comMetrica.length,
       } satisfies ResultadoRelatorio;
     }
 
@@ -240,7 +240,7 @@ export async function rankingSemanal(): Promise<
   ActionResult<Array<{ id: string; titulo: string; score: number; alcance: number | null }>>
 > {
   return acao(z.object({}), {}, async () => {
-    const inicio = inicioDaSemana();
+    const inicio = inicioJanela7Dias();
     const posts = await prisma.post.findMany({
       where: { publicadoEm: { gte: inicio } },
       include: { metricas: { orderBy: { dataColeta: "desc" }, take: 1 } },
