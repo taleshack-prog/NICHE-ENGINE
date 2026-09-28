@@ -51,23 +51,22 @@ const ENV_MODELO: Record<TarefaIA, string> = {
 };
 
 /**
- * Temperatura por tarefa. Nem toda chamada quer a mesma coisa.
+ * TEMPERATURA: não enviada por padrão.
  *
- * Roteiro e copy são geração: variação é o produto. Se dois roteiros do mesmo
- * tema saírem iguais, a ferramenta não serve.
+ * Houve uma tentativa de ajustar temperatura por tarefa (baixa para
+ * classificação, alta para geração). A API recusou: "Temperature is deprecated
+ * for this model" — o Sonnet 5 não aceita o parâmetro. Enviar quebrava as
+ * QUATRO chamadas de uma vez.
  *
- * Decomposição e relatório são CLASSIFICAÇÃO e ANÁLISE. Ali variação é defeito:
- * a mesma transcrição caindo em "contraste" hoje e "mito vs realidade" amanhã
- * fragmenta o vocabulário do swipe file por uma porta que nenhuma canonização
- * pega — os dois rótulos existem e os dois são defensáveis. O mesmo vale para o
- * relatório: conclusão sobre números não deveria mudar entre execuções.
+ * O campo segue disponível em `opts.temperature` para quem fixar, via
+ * ANTHROPIC_MODEL_*, um modelo mais antigo que ainda o aceite. Só é enviado
+ * quando explicitamente informado.
+ *
+ * A preocupação que motivou o ajuste continua válida — decomposição é
+ * classificação e variação ali fragmenta o vocabulário do swipe file. A defesa
+ * contra isso não é temperatura, é a canonização em src/lib/padroes.ts, que
+ * funciona independente do modelo.
  */
-const TEMPERATURA_PADRAO: Record<TarefaIA, number> = {
-  roteiro: 1,
-  copy: 1,
-  decomposicao: 0.2,
-  relatorio: 0.2,
-};
 
 export class IAIndisponivelError extends Error {
   constructor() {
@@ -141,7 +140,8 @@ export async function callClaudeStructured<T>(
     const resposta = await cliente().messages.create({
       model: modeloPara(opts.tarefa),
       max_tokens: opts.maxTokens ?? 4096,
-      temperature: opts.temperature ?? TEMPERATURA_PADRAO[opts.tarefa],
+      // Omitido quando não informado: ver a nota sobre temperatura acima.
+      ...(opts.temperature === undefined ? {} : { temperature: opts.temperature }),
       messages: mensagens,
     });
 
