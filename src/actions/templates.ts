@@ -5,9 +5,15 @@ import { z } from "zod";
 import { callClaudeStructured, iaDisponivel } from "@/lib/ai";
 import { prisma } from "@/lib/db";
 import { CATEGORIAS_GANCHO } from "@/lib/domain";
-import { gravarEstrutura } from "@/lib/json-fields";
-import { canonizarPadrao, listaParaPrompt, PADRAO_NAO_CLASSIFICADO } from "@/lib/padroes";
+import { gravarEstrutura, lerEstrutura } from "@/lib/json-fields";
+import {
+  canonizarPadrao,
+  listaParaPrompt,
+  PADRAO_NAO_CLASSIFICADO,
+  type PadraoCatalogado,
+} from "@/lib/padroes";
 import { decomposeViralPrompt, decomposeViralSchema, interpolar } from "@/lib/prompts";
+import { truncar } from "@/lib/utils";
 import { acao, idSchema, type ActionResult } from "./_shared";
 
 /**
@@ -17,14 +23,33 @@ import { acao, idSchema, type ActionResult } from "./_shared";
  * um padrão com 5 posts é candidato melhor a reuso do que um com 1 — é ele que
  * já tem massa para o relatório semanal comparar.
  */
-async function padroesCatalogados(): Promise<string[]> {
-  const grupos = await prisma.templateViral.groupBy({
-    by: ["padrao"],
-    _count: { padrao: true },
-    orderBy: { _count: { padrao: "desc" } },
-    take: 25,
+async function padroesCatalogados(): Promise<PadraoCatalogado[]> {
+  // Um template de referência por padrão, do qual sai a DEFINIÇÃO do mecanismo.
+  // Preferimos o de maior performance: se o rótulo vai ser reusado, que seja
+  // ancorado no exemplar que melhor representa o padrão.
+  const templates = await prisma.templateViral.findMany({
+    select: { padrao: true, estrutura: true, performance: true },
+    orderBy: [{ performance: "desc" }, { criadoEm: "asc" }],
   });
-  return grupos.map((g) => g.padrao);
+
+  const porPadrao = new Map<string, PadraoCatalogado>();
+  for (const t of templates) {
+    const atual = porPadrao.get(t.padrao);
+    if (atual) {
+      atual.usos += 1;
+      continue;
+    }
+    const retencao = lerEstrutura(t.estrutura).retention?.trim();
+    porPadrao.set(t.padrao, {
+      padrao: t.padrao,
+      // Truncado: a definição serve para o modelo julgar encaixe, não para
+      // reproduzir a análise inteira do template de origem.
+      mecanismo: retencao ? truncar(retencao, 140) : null,
+      usos: 1,
+    });
+  }
+
+  return [...porPadrao.values()].sort((a, b) => b.usos - a.usos).slice(0, 25);
 }
 
 /**
@@ -51,7 +76,10 @@ export async function createTemplate(entrada: unknown): Promise<ActionResult<{ i
   return acao(createTemplateSchema, entrada, async (d) => {
     // Mesma canonização da decomposição por IA: digitar "Contraste" aqui não
     // pode criar um segundo grupo ao lado de "contraste".
-    const padrao = canonizarPadrao(d.padrao, await padroesCatalogados());
+    const padrao = canonizarPadrao(
+      d.padrao,
+      (await padroesCatalogados()).map((c) => c.padrao),
+    );
 
     const t = await prisma.templateViral.create({
       data: {
@@ -110,7 +138,10 @@ export async function decomposeViral(
     // Segunda camada: mesmo pedindo reuso, o modelo pode devolver "Contraste"
     // ou "contraste " e fragmentar o agrupamento. A canonização resolve contra
     // a grafia já catalogada.
-    const padrao = canonizarPadrao(r.padrao, catalogados);
+    const padrao = canonizarPadrao(
+      r.padrao,
+      catalogados.map((c) => c.padrao),
+    );
 
     const template = await prisma.templateViral.create({
       data: {

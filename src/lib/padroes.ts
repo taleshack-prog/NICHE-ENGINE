@@ -67,16 +67,35 @@ export function canonizarPadrao(bruto: string, existentes: readonly string[]): s
   return achado ?? limparPadrao(bruto);
 }
 
+export type PadraoCatalogado = {
+  padrao: string;
+  /** Mecanismo de retenção do template de referência — o que o rótulo SIGNIFICA. */
+  mecanismo: string | null;
+  usos: number;
+};
+
 /**
  * Bloco de padrões para injetar no prompt de decomposição.
- * Sem padrões cadastrados, diz isso explicitamente — a lista vazia faria o
- * modelo tratar o placeholder como ruído.
+ *
+ * Leva a DEFINIÇÃO de cada padrão, não só o nome. Mandar apenas os rótulos fez
+ * o modelo casar por semelhança superficial: num teste real, um gancho
+ * declarativo de curiosity gap ("O staking é uma forma de receber juros") e uma
+ * analogia com falso dilema ("leva ao veterinário ou segue o guru?") foram os
+ * dois catalogados como "contraste", levando 4 de 6 templates para o mesmo
+ * rótulo. Sem saber o que "contraste" significa mecanicamente, reusar vira
+ * chute — e agrupar por padrão volta a não dizer nada, agora por absorção em
+ * vez de fragmentação.
  */
-export function listaParaPrompt(padroes: readonly string[]): string {
+export function listaParaPrompt(padroes: readonly PadraoCatalogado[]): string {
   if (padroes.length === 0) {
     return "(nenhum padrão catalogado ainda — este é o primeiro, então crie o rótulo)";
   }
-  return padroes.map((p) => `- ${p}`).join("\n");
+  return padroes
+    .map((p) => {
+      const def = p.mecanismo ? ` → mecanismo: ${p.mecanismo}` : "";
+      return `- "${p.padrao}" (${p.usos} template(s))${def}`;
+    })
+    .join("\n");
 }
 
 export type TemplateParaRotacao = {

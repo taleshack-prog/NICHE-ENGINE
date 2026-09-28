@@ -77,12 +77,18 @@ REGRAS:
    semanal agrupa performance por padrão, e a geração de roteiro exige três
    padrões DIFERENTES. Um rótulo que só aparece uma vez não serve para nada.
 
-   a) REUSE um dos PADRÕES JÁ CATALOGADOS sempre que o mecanismo for o mesmo,
-      ainda que o tema seja outro. Copie o rótulo EXATAMENTE como está na lista.
-   b) Só invente rótulo novo se o mecanismo for mesmo inédito frente à lista.
-      Nesse caso: 2 a 4 palavras, minúsculas, concretas — alguém deve conseguir
+   a) REUSE um dos PADRÕES JÁ CATALOGADOS quando o MECANISMO descrito na lista
+      for o mesmo que você acabou de identificar, ainda que o tema seja outro.
+      Copie o rótulo EXATAMENTE como está na lista.
+   b) NÃO force o encaixe. Se você precisaria argumentar para explicar por que é
+      o mesmo mecanismo, então não é — crie rótulo novo. Reusar rótulo por
+      semelhança superficial (duas coisas citadas lado a lado não fazem um
+      "contraste"; uma pergunta não faz uma "pergunta provocativa") empilha
+      mecanismos distintos sob um nome só e destrói a comparação de performance
+      tanto quanto inventar rótulo a cada vez.
+   c) Rótulo novo: 2 a 4 palavras, minúsculas, concretas — alguém deve conseguir
       escrever um roteiro só de ler o rótulo.
-   c) PROIBIDO rótulo abstrato ou interpretativo, do tipo "revelação filosófica
+   d) PROIBIDO rótulo abstrato ou interpretativo, do tipo "revelação filosófica
       progressiva", "jornada emocional" ou "reflexão profunda". Esses descrevem
       o EFEITO no espectador, não o MECANISMO, e não são reutilizáveis.
 
