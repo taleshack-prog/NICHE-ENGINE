@@ -42,6 +42,17 @@ import { acao, idSchema, type ActionResult } from "./_shared";
 /** Teto de clipes por Reel. Ver a guarda de custo em `estimar`. */
 const TETO_CLIPES = Number(process.env.REEL_MAX_CLIPES || "12");
 
+/**
+ * Corpo da legenda queimada, em pixels do vídeo final.
+ *
+ * O default do auto-caption é 24, pensado para vídeo horizontal, e some num
+ * quadro vertical. O primeiro palpite daqui foi 64 e ficou grande demais na
+ * tela: a linha ocupava quase toda a largura. 44 fica na faixa de 5-7% da
+ * largura, que é onde as legendas de Reel costumam viver — e é ajustável,
+ * porque o tamanho certo depende da resolução que o modelo de vídeo devolve.
+ */
+const LEGENDA_CORPO = Number(process.env.REEL_LEGENDA_CORPO || "44");
+
 const gerarReelSchema = z.object({
   postId: idSchema,
   voz: z.enum(VOZES_PT_BR).optional(),
@@ -238,7 +249,7 @@ export async function gerarReel(entrada: unknown): Promise<ActionResult<Resultad
         duracaoTotalMs,
       });
 
-      const legendado = await legendarVideo(montado.videoUrl);
+      const legendado = await legendarVideo(montado.videoUrl, { corpo: LEGENDA_CORPO });
       final = {
         tipo: "video",
         url: legendado.videoUrl,
@@ -281,6 +292,81 @@ export async function gerarReel(entrada: unknown): Promise<ActionResult<Resultad
       custoEstimadoUsd,
       reaproveitados,
     };
+  });
+}
+
+const refazerLegendaSchema = z.object({
+  postId: idSchema,
+  corpo: z.coerce.number().int().min(18).max(120).optional(),
+});
+
+/**
+ * Remonta e relegenda a partir dos clipes já gerados.
+ *
+ * O tamanho certo da legenda depende da resolução que o modelo de vídeo
+ * devolveu, que varia por tier — não dá para acertar por palpite na primeira
+ * vez. Sem esta ação, ajustar o corpo da fonte exigiria descartar tudo e pagar
+ * oito clipes de novo por causa de um número.
+ *
+ * Montagem e legenda são as duas etapas baratas da cadeia: nenhuma chamada ao
+ * Kling acontece aqui.
+ */
+export async function refazerLegenda(
+  entrada: unknown,
+): Promise<ActionResult<{ videoUrl: string; corpo: number }>> {
+  return acao(refazerLegendaSchema, entrada, async (d) => {
+    if (!falDisponivel()) throw new Error("FAL_KEY não configurada (Fase 3).");
+
+    const post = await prisma.post.findUniqueOrThrow({
+      where: { id: d.postId },
+      select: { id: true, midiaPaths: true },
+    });
+
+    const midia = lerMidia(post.midiaPaths);
+    const narracao = midia.find((m) => m.papel === "narracao");
+    const clipes = midia.filter((m) => m.papel === "clipe").sort(porOrdem);
+
+    if (!narracao || clipes.length === 0) {
+      throw new Error(
+        "As etapas do Reel não estão mais gravadas (narração e clipes). Gere o Reel novamente.",
+      );
+    }
+
+    const corpo = d.corpo ?? LEGENDA_CORPO;
+    const duracaoTotalMs = clipes.reduce(
+      (a, c) => Math.max(a, (c.inicioMs ?? 0) + (c.duracaoMs ?? 0)),
+      0,
+    );
+
+    const montado = await montarVideo({
+      clipes: clipes.map((c) => ({
+        url: c.url,
+        inicioMs: c.inicioMs ?? 0,
+        duracaoMs: c.duracaoMs ?? SEGUNDOS_POR_CLIPE * 1000,
+      })),
+      audioUrl: narracao.url,
+      duracaoTotalMs,
+    });
+
+    const legendado = await legendarVideo(montado.videoUrl, { corpo });
+
+    const lista: MidiaItem[] = [
+      ...midia.filter((m) => m.papel !== "final"),
+      {
+        tipo: "video",
+        url: legendado.videoUrl,
+        papel: "final",
+        criadoEm: new Date().toISOString(),
+      },
+    ];
+
+    await prisma.post.update({
+      where: { id: post.id },
+      data: { midiaPaths: gravarMidia(lista) },
+    });
+
+    revalidatePath("/producao");
+    return { videoUrl: legendado.videoUrl, corpo };
   });
 }
 

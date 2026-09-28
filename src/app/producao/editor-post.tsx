@@ -32,7 +32,7 @@ import {
   gerarMidia,
   removerMidia,
 } from "@/actions/midia";
-import { gerarReel, limparEtapasReel } from "@/actions/reel";
+import { gerarReel, limparEtapasReel, refazerLegenda } from "@/actions/reel";
 import { Botao } from "@/components/ui/botao";
 import { AreaTexto, Campo, Input, Selecao } from "@/components/ui/campos";
 import { Selo } from "@/components/ui/selo";
@@ -70,6 +70,7 @@ export function EditorPost({
   const [templateId, setTemplateId] = React.useState(post.templateId ?? "");
   const [variacoes, setVariacoes] = React.useState<VariacaoRoteiro[] | null>(null);
   const [tema, setTema] = React.useState(post.titulo);
+  const [corpoLegenda, setCorpoLegenda] = React.useState(44);
 
   const salvar = useAcao();
   const ia = useAcao();
@@ -93,6 +94,15 @@ export function EditorPost({
   const capa = post.midiaLista.find((m) => m.papel === "capa");
   const reelPronto = post.midiaLista.find((m) => m.papel === "final");
   const clipesFeitos = post.midiaLista.filter((m) => m.papel === "clipe").length;
+  /**
+   * A grade mostrava narração, 8 cenas e 8 clipes ao lado do Reel pronto. São
+   * artefatos intermediários, guardados para a retomada — mas na tela pareciam
+   * o resultado, e o resultado parecia só mais um item. Oficina recolhida,
+   * entregável na frente.
+   */
+  const ETAPAS = new Set(["narracao", "cena", "clipe"]);
+  const entregaveis = post.midiaLista.filter((m) => !ETAPAS.has(m.papel ?? ""));
+  const etapas = post.midiaLista.filter((m) => ETAPAS.has(m.papel ?? ""));
   const cenasFeitas = post.midiaLista.filter((m) => m.papel === "cena").length;
   const slides = post.midiaLista.filter((m) => m.papel === "capa" || m.papel === "slide").length;
 
@@ -191,6 +201,15 @@ export function EditorPost({
         `Reel pronto: ${d.duracaoSeg}s, ${d.clipes} cortes, narrado e legendado (~US$ ${d.custoEstimadoUsd}).`,
       );
     }
+  }
+
+  /** Remonta e relegenda com outro corpo de fonte. Não chama o Kling. */
+  async function ajustarLegenda() {
+    toast.info("Remontando e relegendando — só as etapas baratas, sem gerar clipe novo.");
+    await midia.executar(() => refazerLegenda({ postId: post.id, corpo: corpoLegenda }), {
+      sucesso: `Legenda refeita com corpo ${corpoLegenda}.`,
+      aoConcluir: aoAtualizar,
+    });
   }
 
   /** Descarta narração, cenas e clipes para refazer do zero com outro roteiro. */
@@ -550,7 +569,7 @@ export function EditorPost({
           <section className="space-y-3 border-t border-borda pt-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-suave">
-                Mídia ({post.midiaLista.length})
+                Mídia ({entregaveis.length})
               </h3>
               <div className="flex gap-2">
                 <Botao
@@ -621,6 +640,30 @@ export function EditorPost({
                   Refazer
                 </Botao>
               </div>
+            ) : null}
+
+            {reelPronto ? (
+              <div className="flex flex-wrap items-center gap-2 rounded-md border border-borda px-2 py-1.5">
+                <label htmlFor="e-corpo" className="text-[11px] text-tenue">
+                  Corpo da legenda
+                </label>
+                <input
+                  id="e-corpo"
+                  type="number"
+                  min={18}
+                  max={120}
+                  step={2}
+                  value={corpoLegenda}
+                  onChange={(e) => setCorpoLegenda(Number(e.target.value))}
+                  className="h-7 w-16 rounded-md border border-borda bg-superficie px-2 text-xs"
+                />
+                <Botao variante="secundario" tamanho="sm" onClick={ajustarLegenda} disabled={ocupado}>
+                  Refazer legenda
+                </Botao>
+                <span className="text-[10px] text-tenue">
+                  remonta e relegenda sem gerar clipe novo — nenhuma chamada paga de vídeo
+                </span>
+              </div>
             ) : clipesFeitos > 0 || cenasFeitas > 0 ? (
               <p className="rounded-md border border-alerta/40 bg-alerta/10 px-2 py-1.5 text-[11px] text-suave">
                 Reel em produção: {cenasFeitas} cenas e {clipesFeitos} clipes prontos. Clique em{" "}
@@ -646,9 +689,9 @@ export function EditorPost({
               </p>
             ) : null}
 
-            {post.midiaLista.length > 0 ? (
+            {entregaveis.length > 0 ? (
               <ul className="grid grid-cols-3 gap-2">
-                {post.midiaLista.map((m) => (
+                {entregaveis.map((m) => (
                   <li
                     key={m.url}
                     className="group relative overflow-hidden rounded-md border border-borda bg-superficie-2"
@@ -745,6 +788,47 @@ export function EditorPost({
                 Sem mídia. Carrossel exige 2 a 10 imagens; Reel exige um vídeo.
               </p>
             )}
+
+            {etapas.length > 0 ? (
+              <details className="rounded-md border border-borda">
+                <summary className="cursor-pointer px-2 py-1.5 text-[11px] text-tenue">
+                  Etapas guardadas ({etapas.length}) — narração, cenas e clipes. Ficam aqui para a
+                  retomada não repagar; não vão para o Instagram.
+                </summary>
+                <ul className="grid grid-cols-4 gap-2 p-2 pt-0">
+                  {etapas.map((m) => (
+                    <li
+                      key={m.url}
+                      className="relative overflow-hidden rounded border border-borda bg-superficie-2"
+                    >
+                      {m.tipo === "imagem" ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={m.url}
+                          alt={`cena ${m.ordem ?? ""}`}
+                          className="aspect-square w-full object-cover opacity-70"
+                          loading="lazy"
+                        />
+                      ) : m.tipo === "video" ? (
+                        <video
+                          src={m.url}
+                          controls
+                          preload="none"
+                          className="aspect-square w-full bg-black object-cover"
+                        />
+                      ) : (
+                        <div className="flex aspect-square w-full items-center justify-center p-1">
+                          <audio src={m.url} controls className="w-full" preload="none" />
+                        </div>
+                      )}
+                      <span className="absolute left-1 top-1 rounded bg-black/70 px-1 text-[9px] uppercase">
+                        {m.papel === "narracao" ? "voz" : `${m.papel} ${m.ordem ?? ""}`}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
 
             <form onSubmit={anexarUrl} className="flex gap-2">
               <Selecao name="tipo" defaultValue="imagem" className="h-8 w-24 text-xs">
