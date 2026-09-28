@@ -3,9 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { callClaudeStructured, iaDisponivel } from "@/lib/ai";
+import { aplicarCapa, formatoValido, renderizarCapa } from "@/lib/capa";
 import { prisma } from "@/lib/db";
 import { FORMATOS, POST_STATUS } from "@/lib/domain";
-import { gravarHashtags, lerHashtags, lerMidia } from "@/lib/json-fields";
+import { gravarHashtags, gravarMidia, lerHashtags, lerMidia } from "@/lib/json-fields";
 import { ordenarPorRotacao, swipeFileParaPrompt } from "@/lib/padroes";
 import { metaDisponivel, publicarNoInstagram } from "@/lib/meta";
 import {
@@ -376,12 +377,35 @@ export async function gerarCopy(
       maxTokens: 4096,
     });
 
+    // Se já existe imagem, a capa é refeita com o texto novo no mesmo passo.
+    // Copy nova com capa velha seria pior que capa nenhuma: a frase da imagem
+    // contradiria a legenda, e o erro só apareceria depois de publicado.
+    const midia = lerMidia(post.midiaPaths);
+    const base = midia.find((m) => m.tipo === "imagem");
+    const origem = base?.papel === "capa" ? (base.origemUrl ?? base.url) : base?.url;
+    let midiaAtualizada: string | undefined;
+
+    if (origem) {
+      try {
+        const capa = await renderizarCapa({
+          imagemUrl: origem,
+          texto: r.coverText,
+          formato: formatoValido(post.formato),
+        });
+        midiaAtualizada = gravarMidia(aplicarCapa(midia, origem, capa.url));
+      } catch {
+        // Copy é o produto desta ação; capa é bônus. Falhar aqui perderia a
+        // legenda inteira por causa de um arquivo de imagem.
+      }
+    }
+
     await prisma.post.update({
       where: { id: post.id },
       data: {
         legenda: r.legenda,
         hashtags: gravarHashtags(r.hashtags),
         coverText: r.coverText,
+        ...(midiaAtualizada !== undefined && { midiaPaths: midiaAtualizada }),
       },
     });
 

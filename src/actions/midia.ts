@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { aplicarCapa, formatoValido, renderizarCapa } from "@/lib/capa";
 import { prisma } from "@/lib/db";
 import { TIPOS_MIDIA } from "@/lib/domain";
 import { falDisponivel, gerarImagens, gerarVideo, promptVisualDeRoteiro } from "@/lib/fal";
@@ -16,6 +17,60 @@ import { acao, idSchema, type ActionResult } from "./_shared";
  * caminho certo é o Workflow A do n8n, não o clique no dashboard.
  */
 
+const gerarCapaSchema = z.object({
+  postId: idSchema,
+  /** Imagem base. Sem isto, usa a primeira imagem da lista. */
+  imagemUrl: z.string().min(1).optional(),
+});
+
+/**
+ * Queima o coverText numa das imagens do post.
+ *
+ * Existe como ação separada — e não só como efeito da geração — porque o
+ * usuário escolhe entre as 3 imagens que o FLUX devolve, e porque editar o
+ * coverText à mão precisa de um jeito de reaplicar sem pagar geração nova.
+ */
+export async function gerarCapa(entrada: unknown): Promise<ActionResult<{ url: string }>> {
+  return acao(gerarCapaSchema, entrada, async (d) => {
+    const post = await prisma.post.findUniqueOrThrow({
+      where: { id: d.postId },
+      select: { id: true, coverText: true, formato: true, midiaPaths: true },
+    });
+
+    const texto = post.coverText?.trim();
+    if (!texto) {
+      throw new Error(
+        "Este post não tem texto de capa. Clique em Gerar copy, ou escreva o campo Cover text e salve, antes de gerar a capa.",
+      );
+    }
+
+    const lista = lerMidia(post.midiaPaths);
+    const alvo = d.imagemUrl ?? lista.find((m) => m.tipo === "imagem")?.url;
+    if (!alvo) {
+      throw new Error("Não há imagem para servir de fundo. Gere ou anexe uma imagem primeiro.");
+    }
+
+    // Reaplicar sobre a própria capa empilharia texto sobre texto a cada
+    // clique; a base correta é sempre a imagem limpa que a originou.
+    const item = lista.find((m) => m.url === alvo);
+    const origem = item?.papel === "capa" ? (item.origemUrl ?? item.url) : alvo;
+
+    const capa = await renderizarCapa({
+      imagemUrl: origem,
+      texto,
+      formato: formatoValido(post.formato),
+    });
+
+    await prisma.post.update({
+      where: { id: post.id },
+      data: { midiaPaths: gravarMidia(aplicarCapa(lista, origem, capa.url)) },
+    });
+
+    revalidatePath("/producao");
+    return { url: capa.url };
+  });
+}
+
 const gerarMidiaSchema = z.object({
   postId: idSchema,
   tipo: z.enum(TIPOS_MIDIA),
@@ -25,7 +80,7 @@ const gerarMidiaSchema = z.object({
 
 export async function gerarMidia(
   entrada: unknown,
-): Promise<ActionResult<{ adicionados: number }>> {
+): Promise<ActionResult<{ adicionados: number; capa: string | null; capaErro?: string }>> {
   return acao(gerarMidiaSchema, entrada, async (d) => {
     if (!falDisponivel()) {
       throw new Error("FAL_KEY não configurada (Fase 3). Anexe a mídia manualmente por URL.");
@@ -33,7 +88,14 @@ export async function gerarMidia(
 
     const post = await prisma.post.findUniqueOrThrow({
       where: { id: d.postId },
-      select: { id: true, titulo: true, roteiro: true, midiaPaths: true, formato: true },
+      select: {
+        id: true,
+        titulo: true,
+        roteiro: true,
+        midiaPaths: true,
+        formato: true,
+        coverText: true,
+      },
     });
 
     const atual = lerMidia(post.midiaPaths);
@@ -45,11 +107,21 @@ export async function gerarMidia(
         promptVisualDeRoteiro(post.titulo, post.roteiro ?? post.titulo);
       novos = await gerarImagens(prompt, {
         quantidade: d.quantidade ?? (post.formato === "carrossel" ? 5 : 3),
-        aspecto: post.formato === "carrossel" ? "square_hd" : "portrait_16_9",
+        // 3:4 para feed (recortado depois para 1080×1350) e 9:16 para Reel.
+        // Pedir square_hd para carrossel obrigava a capa a cortar as laterais.
+        aspecto: post.formato === "reel" ? "portrait_16_9" : "portrait_4_3",
       });
     } else {
       // Kling é image-to-video: precisa de um frame de partida.
-      const base = atual.find((m) => m.tipo === "imagem");
+      //
+      // E o frame é a imagem LIMPA, nunca a capa. Vídeo generativo deforma
+      // letras: animar o texto queimado devolveria um Reel com a frase
+      // derretendo nos primeiros segundos. No Instagram a capa não precisa
+      // ser o primeiro quadro — vai como `cover_url` do Reel (ver src/lib/meta.ts).
+      const primeira = atual.find((m) => m.tipo === "imagem");
+      const base = primeira
+        ? { url: primeira.papel === "capa" ? (primeira.origemUrl ?? primeira.url) : primeira.url }
+        : undefined;
       if (!base) {
         throw new Error(
           "Gere ao menos uma imagem primeiro — o Kling é image-to-video e precisa de um frame inicial.",
@@ -61,13 +133,40 @@ export async function gerarMidia(
       novos = [await gerarVideo(base.url, movimento)];
     }
 
+    let lista: MidiaItem[] = [...atual, ...novos];
+    let capa: string | null = null;
+    let capaErro: string | undefined;
+
+    // A capa sai junto com a imagem. Este é o ponto do ciclo em que o sistema
+    // deixa de entregar ingredientes e passa a entregar o post: sem isto, o
+    // coverText continua sendo uma string no banco e o arquivo pronto tem que
+    // ser montado à mão em editor externo.
+    const texto = post.coverText?.trim();
+    const origem = d.tipo === "imagem" ? novos[0]?.url : undefined;
+
+    if (texto && origem && !atual.some((m) => m.papel === "capa")) {
+      try {
+        const render = await renderizarCapa({
+          imagemUrl: origem,
+          texto,
+          formato: formatoValido(post.formato),
+        });
+        lista = aplicarCapa(lista, origem, render.url);
+        capa = render.url;
+      } catch (e) {
+        // As imagens já foram pagas: falha na composição não pode descartá-las.
+        // O erro sobe como aviso e o botão "Capa" permite tentar de novo.
+        capaErro = (e as Error).message;
+      }
+    }
+
     await prisma.post.update({
       where: { id: post.id },
-      data: { midiaPaths: gravarMidia([...atual, ...novos]) },
+      data: { midiaPaths: gravarMidia(lista) },
     });
 
     revalidatePath("/producao");
-    return { adicionados: novos.length };
+    return { adicionados: novos.length, capa, ...(capaErro ? { capaErro } : {}) };
   });
 }
 

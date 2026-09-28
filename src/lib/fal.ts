@@ -47,7 +47,7 @@ type FalImagemResposta = { images?: Array<{ url?: string }> };
 /** Geração síncrona de imagens (FLUX). Retorna itens prontos para midiaPaths. */
 export async function gerarImagens(
   prompt: string,
-  opts: { quantidade?: number; aspecto?: "square_hd" | "portrait_16_9" } = {},
+  opts: { quantidade?: number; aspecto?: "square_hd" | "portrait_4_3" | "portrait_16_9" } = {},
 ): Promise<MidiaItem[]> {
   const res = await fetch(`https://fal.run/${MODELO_IMAGEM()}`, {
     method: "POST",
@@ -138,13 +138,31 @@ export async function gerarVideo(
   );
 }
 
-/** Deriva um prompt visual do roteiro. b-roll precisa de cena, não de tese. */
+/**
+ * Deriva um prompt visual do roteiro. b-roll precisa de cena, não de tese.
+ *
+ * As três restrições abaixo saíram de defeitos observados, não de estilo:
+ *
+ * 1. "no people, no faces" — roteiro abstrato ("escolha a rede antes da
+ *    carteira") não dá ao FLUX nenhum objeto para desenhar, e o vazio ele
+ *    preenche com o lugar-comum do dataset: pessoa de camisa social olhando
+ *    para um laptop. É a estética de banco de imagem que denuncia conteúdo
+ *    automatizado à primeira olhada.
+ * 2. "no text" reforçado três vezes — o FLUX escreve letras deformadas quando
+ *    o prompt tem palavras entre aspas. Como o coverText é aplicado depois em
+ *    src/lib/capa.ts, qualquer texto que o modelo inventar vira sujeira por
+ *    baixo da frase de verdade.
+ * 3. espaço negativo embaixo — a capa escreve no terço inferior. Sem pedir
+ *    isso, o assunto cai bem onde o texto vai entrar e um tapa o outro.
+ */
 export function promptVisualDeRoteiro(tema: string, corpo: string): string {
   return [
-    "Cinematic b-roll still for a short vertical social video.",
-    `Subject: ${tema}.`,
-    `Scene cues: ${corpo.slice(0, 280)}`,
-    "No text, no logos, no watermarks, no readable letters.",
-    "Moody natural lighting, shallow depth of field, photographic realism.",
+    "Cinematic b-roll still photograph for a vertical social video.",
+    `Subject: a concrete physical object or environment that represents: ${tema}.`,
+    `Context: ${corpo.slice(0, 220)}`,
+    "Show objects, tools, surfaces, textures or architecture — no people, no faces, no hands, no crowds.",
+    "Absolutely no text, no letters, no numbers, no logos, no watermarks, no UI screenshots.",
+    "Composition: subject in the upper two thirds, clean uncluttered negative space across the bottom third.",
+    "Moody directional lighting, shallow depth of field, rich color, photographic realism, no illustration.",
   ].join(" ");
 }

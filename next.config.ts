@@ -22,8 +22,9 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "2mb",
     },
   },
-  // O Prisma Client usa require dinâmico do engine: mantém fora do bundle do server.
-  serverExternalPackages: ["@prisma/client", ".prisma/client"],
+  // Prisma Client e @napi-rs/canvas carregam binários nativos (.node) por require
+  // dinâmico. Empacotá-los quebra a resolução do binário em runtime.
+  serverExternalPackages: ["@prisma/client", ".prisma/client", "@napi-rs/canvas"],
 };
 
 export default nextConfig;

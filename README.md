@@ -193,6 +193,26 @@ A ordem importa: custo e burocracia crescem da esquerda para a direita.
 3. **Meta Graph API** — por último. Exige conta Instagram *Business* vinculada a uma
    página do Facebook e app com `instagram_content_publish` aprovado. Até o review sair,
    agende manualmente pelo Meta Business Suite.
+4. **`APP_PUBLIC_URL`** — só para publicar pela API. O Meta **baixa** a mídia do lado
+   dele: as imagens do fal já são públicas, mas a **capa** é composta aqui e servida
+   em `/midia/capas/...`, endereço que só existe nesta máquina. Sem esta variável,
+   "Publicar agora" recusa com a mensagem explicando; a capa continua sendo gerada e
+   pode ser baixada pelo editor para postagem manual.
+
+### Capa — o texto vai queimado na imagem
+
+O `coverText` que a IA gera **não é só um campo**: `src/lib/capa.ts` compõe a frase
+sobre a imagem, no tamanho canônico do Instagram (1080×1350 para feed, 1080×1920
+para Reel), e o arquivo sai pronto para publicar.
+
+- **Carrossel / imagem única:** a capa vira o primeiro slide e substitui a imagem
+  limpa que a originou — publicar as duas mostraria o mesmo visual repetido.
+- **Reel:** a capa **não** é o primeiro quadro do vídeo (o Kling deformaria as
+  letras). Vai como `cover_url` do container — é o que o feed mostra antes do play.
+- Trocar a imagem de fundo ou reescrever o texto **não** gasta geração nova: a
+  imagem original fica registrada em `origemUrl` e a composição é refeita local.
+- A fonte é `assets/fontes/Poppins-Bold.ttf`, versionada no repositório para a capa
+  sair idêntica em qualquer máquina. Troque por `CAPA_FONTE` no `.env`.
 
 > **O token do Meta vive na tabela `config`, não no `.env`.**
 > Ele expira em ~60 dias e é rotacionado pelo Workflow D. Se o dashboard lesse de

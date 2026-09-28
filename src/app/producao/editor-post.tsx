@@ -3,11 +3,13 @@
 import * as React from "react";
 import {
   CalendarClock,
+  Download,
   Film,
   Image as ImageIcon,
   Send,
   Sparkles,
   Trash2,
+  Type,
   Wand2,
   X,
 } from "lucide-react";
@@ -21,7 +23,7 @@ import {
   publicarPost,
   updatePost,
 } from "@/actions/posts";
-import { anexarMidiaUrl, gerarMidia, removerMidia } from "@/actions/midia";
+import { anexarMidiaUrl, gerarCapa, gerarMidia, removerMidia } from "@/actions/midia";
 import { Botao } from "@/components/ui/botao";
 import { AreaTexto, Campo, Input, Selecao } from "@/components/ui/campos";
 import { Selo } from "@/components/ui/selo";
@@ -78,6 +80,8 @@ export function EditorPost({
   const palavrasReGancho = contarPalavras(primeiraLinhaLegenda);
   const qtdHashtags = hashtags.split(/[\s,]+/).filter(Boolean).length;
   const palavrasCover = contarPalavras(coverText);
+  const temImagem = post.midiaLista.some((m) => m.tipo === "imagem");
+  const capa = post.midiaLista.find((m) => m.papel === "capa");
 
   async function salvarCampos() {
     await salvar.executar(
@@ -135,8 +139,24 @@ export function EditorPost({
   }
 
   async function gerarImagem() {
-    await midia.executar(() => gerarMidia({ postId: post.id, tipo: "imagem" }), {
-      sucesso: "Imagens anexadas.",
+    const r = await midia.executar(() => gerarMidia({ postId: post.id, tipo: "imagem" }), {
+      aoConcluir: aoAtualizar,
+    });
+    if (!r || typeof r !== "object") return;
+    const d = r as { adicionados: number; capa: string | null; capaErro?: string };
+    if (d.capa) {
+      toast.success(`${d.adicionados} imagens. A primeira já saiu com o texto de capa.`);
+    } else if (d.capaErro) {
+      toast.warning(`Imagens anexadas, mas a capa falhou: ${d.capaErro}`);
+    } else {
+      toast.success(`${d.adicionados} imagens anexadas.`);
+    }
+  }
+
+  /** Queima o cover text na imagem (ou troca qual imagem serve de fundo). */
+  async function aplicarCapa(imagemUrl?: string) {
+    await midia.executar(() => gerarCapa({ postId: post.id, imagemUrl }), {
+      sucesso: "Capa gerada — a imagem com texto é a primeira da lista.",
       aoConcluir: aoAtualizar,
     });
   }
@@ -382,13 +402,30 @@ export function EditorPost({
               rotulo={`Cover text — ${palavrasCover}/6 palavras`}
               htmlFor="e-cover"
               erro={palavrasCover > 6 ? ["Passa de 6 palavras"] : undefined}
+              dica="Salve o texto antes de aplicar — a capa é composta a partir do que está gravado."
             >
-              <Input
-                id="e-cover"
-                value={coverText}
-                onChange={(e) => setCoverText(e.target.value.toUpperCase())}
-                className="uppercase"
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="e-cover"
+                  value={coverText}
+                  onChange={(e) => setCoverText(e.target.value.toUpperCase())}
+                  className="uppercase"
+                />
+                <Botao
+                  variante="secundario"
+                  tamanho="sm"
+                  onClick={() => aplicarCapa()}
+                  disabled={ocupado || !temImagem}
+                  title={
+                    temImagem
+                      ? "Escrever este texto na imagem"
+                      : "Gere ou anexe uma imagem primeiro"
+                  }
+                >
+                  <Type />
+                  Aplicar
+                </Botao>
+              </div>
             </Campo>
           </section>
 
@@ -422,6 +459,13 @@ export function EditorPost({
               </div>
             </div>
 
+            {capa ? (
+              <p className="rounded-md border border-acento/40 bg-acento/10 px-2 py-1.5 text-[11px] text-suave">
+                A primeira imagem já está com o texto de capa. Passe o mouse nela e use{" "}
+                <Download className="inline size-3 align-[-2px]" /> para baixar pronta.
+              </p>
+            ) : null}
+
             {post.midiaLista.length > 0 ? (
               <ul className="grid grid-cols-3 gap-2">
                 {post.midiaLista.map((m) => (
@@ -438,22 +482,54 @@ export function EditorPost({
                       className="aspect-square w-full object-cover"
                       loading="lazy"
                     />
-                    <span className="absolute left-1 top-1 rounded bg-black/70 px-1 text-[9px] uppercase">
-                      {m.tipo}
-                    </span>
-                    <button
-                      type="button"
-                      aria-label="Remover mídia"
-                      disabled={ocupado}
-                      onClick={() =>
-                        midia.executar(() => removerMidia({ postId: post.id, url: m.url }), {
-                          aoConcluir: aoAtualizar,
-                        })
-                      }
-                      className="absolute right-1 top-1 rounded bg-black/70 p-0.5 text-erro opacity-0 transition-opacity group-hover:opacity-100"
+                    <span
+                      className={`absolute left-1 top-1 rounded px-1 text-[9px] uppercase ${
+                        m.papel === "capa"
+                          ? "bg-acento text-fundo font-semibold"
+                          : "bg-black/70"
+                      }`}
                     >
-                      <Trash2 className="size-3" />
-                    </button>
+                      {m.papel === "capa" ? "capa" : m.tipo}
+                    </span>
+                    <div className="absolute right-1 top-1 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      {m.papel === "capa" ? (
+                        <a
+                          href={m.url}
+                          // Nome legível na pasta de downloads: "capa-...jpg"
+                          // vale mais que o hash do arquivo na hora de postar.
+                          download={`capa-${titulo.slice(0, 40).replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-").toLowerCase() || "post"}.jpg`}
+                          aria-label="Baixar capa pronta"
+                          title="Baixar a imagem pronta"
+                          className="rounded bg-black/70 p-0.5 text-acento hover:text-texto"
+                        >
+                          <Download className="size-3" />
+                        </a>
+                      ) : m.tipo === "imagem" && coverText.trim() ? (
+                        <button
+                          type="button"
+                          aria-label="Usar esta imagem como capa"
+                          title="Escrever o cover text nesta imagem"
+                          disabled={ocupado}
+                          onClick={() => aplicarCapa(m.url)}
+                          className="rounded bg-black/70 p-0.5 text-acento hover:text-texto"
+                        >
+                          <Type className="size-3" />
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        aria-label="Remover mídia"
+                        disabled={ocupado}
+                        onClick={() =>
+                          midia.executar(() => removerMidia({ postId: post.id, url: m.url }), {
+                            aoConcluir: aoAtualizar,
+                          })
+                        }
+                        className="rounded bg-black/70 p-0.5 text-erro"
+                      >
+                        <Trash2 className="size-3" />
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>

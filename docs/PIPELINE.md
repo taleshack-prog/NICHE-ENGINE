@@ -54,18 +54,61 @@ significa que **subir o n8n não é opcional** se você quer publicação autom�
 | 2 | Conta Instagram **Business** vinculada a uma Página do Facebook | configuração de conta | 30 min | tudo do Meta |
 | 3 | App Meta em Development mode + seu IG como *Instagram Tester* + token de longa duração na tabela `config` | configuração de app | 1-2 h | publicação e métricas |
 | 4 | n8n no ar com os 4 workflows importados | infra (já no docker-compose) | 1 h | execução do agendamento |
+| 5 | `APP_PUBLIC_URL` — endereço público do dashboard | deploy ou túnel | 20 min | publicação pela API (só a capa) |
 
-Nada acima é desenvolvimento. São quatro configurações.
+Nada acima é desenvolvimento. São cinco configurações.
+
+> O item 5 entrou depois. A capa é composta nesta máquina e servida em
+> `/midia/capas/...`; o Meta **baixa** a mídia do lado dele e não alcança
+> localhost. As imagens do fal são públicas e não teriam esse problema — a capa
+> tem. Sem a variável, "Publicar agora" recusa com a mensagem explicando, e a
+> capa continua podendo ser baixada pelo editor para postagem manual.
 
 ---
 
 ## Cronologia
+
+## A quarta coisa: o coverText não era aplicado
+
+Corrigido em 28/09/2026. O prompt de copy gerava `coverText`, o Zod validava as
+6 palavras, o editor mostrava o contador — e **nada escrevia o texto na
+imagem**. O ciclo terminava no dashboard e continuava no Canva.
+
+Conectar o Instagram não resolveria: o Graph API publica o arquivo que você der,
+e o arquivo saía sem texto. Era a diferença entre entregar o post e entregar os
+ingredientes dele.
+
+`src/lib/capa.ts` compõe a imagem final: frase queimada, 1080×1350 para feed ou
+1080×1920 para Reel, fonte versionada no repositório. No carrossel a capa
+substitui a imagem limpa e vai para a primeira posição; no Reel vai como
+`cover_url` do container, porque o Kling deformaria as letras se elas
+estivessem no primeiro quadro.
+
+**Passos manuais por post, antes e depois:**
+
+| Passo | Antes | Com a capa | Com o Instagram conectado |
+| --- | --- | --- | --- |
+| Baixar as imagens | manual | manual | — |
+| Escrever o texto na capa | **Canva / GIMP** | automático | automático |
+| Copiar legenda e hashtags | manual | manual | — |
+| Postar | manual | manual | — |
+| Mover o card para Publicado | manual | manual | — |
+| Coletar métricas | manual | manual | Workflow C |
+
+Cinco passos manuais viraram quatro; com o Meta ligado, zero.
+
+---
 
 ### Dia 1 — Mídia (Fase 3)
 
 1. Criar chave em fal.ai, colocar créditos, gravar em `FAL_KEY` no `.env`.
 2. Reiniciar o dev server (o Next lê o `.env` só na inicialização).
 3. No editor de um post web3: **gerar imagem** → conferir → **gerar vídeo**.
+
+A imagem já volta com o texto de capa aplicado, desde que a copy tenha sido
+gerada antes (é ela que preenche o `coverText`). Para trocar qual das 3 imagens
+serve de fundo, passe o mouse na miniatura e clique no **T**; para baixar a capa
+pronta, clique na seta. Nenhuma das duas ações gasta geração nova.
 
 O Kling é image-to-video: precisa de pelo menos uma imagem antes. O editor já
 recusa a ordem errada com a mensagem explicando.

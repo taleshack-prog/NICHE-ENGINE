@@ -99,6 +99,35 @@ async function aguardarContainer(
   );
 }
 
+/**
+ * Absolutiza a URL da mídia para o Graph API.
+ *
+ * O Meta BAIXA o arquivo do lado dele: quem precisa alcançar a URL é o
+ * servidor da Meta, não o seu navegador. A capa gerada em src/lib/capa.ts
+ * mora em `/midia/capas/...`, servida pelo próprio dashboard — que, em
+ * localhost, não existe para o mundo externo.
+ *
+ * Falhar aqui, com o nome da variável, é melhor que deixar o container
+ * pendurado em IN_PROGRESS por 4 minutos até estourar o teto de polling com
+ * uma mensagem genérica.
+ */
+function urlPublica(u: string): string {
+  if (/^https?:\/\//i.test(u)) return u;
+
+  const base = process.env.APP_PUBLIC_URL?.trim().replace(/\/+$/, "");
+  if (!base) {
+    throw new MetaError(
+      `a mídia "${u}" é um arquivo local do dashboard e o Meta precisa baixá-la pela internet. Defina APP_PUBLIC_URL no .env com um endereço público (deploy ou túnel, ex.: cloudflared/ngrok) — ou publique este post manualmente.`,
+    );
+  }
+  if (/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/i.test(base)) {
+    throw new MetaError(
+      `APP_PUBLIC_URL está apontando para ${base}, que só existe nesta máquina. O Meta baixa a mídia do lado dele e não alcança localhost.`,
+    );
+  }
+  return `${base}/${u.replace(/^\/+/, "")}`;
+}
+
 export type ResultadoPublicacao = { igPostId: string };
 
 export async function publicarNoInstagram(args: {
@@ -123,7 +152,7 @@ export async function publicarNoInstagram(args: {
     const filhos: string[] = [];
     for (const img of imagens) {
       const filho = await graphPost(c, `${c.igUserId}/media`, {
-        image_url: img.url,
+        image_url: urlPublica(img.url),
         is_carousel_item: true,
       });
       filhos.push(filho.id);
@@ -139,11 +168,17 @@ export async function publicarNoInstagram(args: {
     const video = midia.find((m) => m.tipo === "video");
     if (!video) throw new MetaError("Reel exige um item de mídia do tipo vídeo");
 
+    // A capa entra como `cover_url`, não como primeiro quadro: é ela que o feed
+    // e a aba Reels exibem antes do play. Sem isto o Instagram escolhe um frame
+    // qualquer do vídeo e o coverText não aparece em lugar nenhum.
+    const capa = midia.find((m) => m.papel === "capa");
+
     const container = await graphPost(c, `${c.igUserId}/media`, {
       media_type: "REELS",
-      video_url: video.url,
+      video_url: urlPublica(video.url),
       caption: legenda,
       share_to_feed: true,
+      ...(capa ? { cover_url: urlPublica(capa.url) } : {}),
     });
     containerId = container.id;
   } else {
@@ -151,7 +186,7 @@ export async function publicarNoInstagram(args: {
     if (!imagem) throw new MetaError("post estático exige uma imagem");
 
     const container = await graphPost(c, `${c.igUserId}/media`, {
-      image_url: imagem.url,
+      image_url: urlPublica(imagem.url),
       caption: legenda,
     });
     containerId = container.id;

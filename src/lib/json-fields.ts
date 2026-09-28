@@ -14,6 +14,17 @@ export const midiaItemSchema = z.object({
   url: z.string().min(1),
   promptUsado: z.string().optional(),
   criadoEm: z.string().optional(),
+  /**
+   * "capa" = imagem com o coverText já queimado. Só uma por post, e sempre na
+   * primeira posição: no carrossel é o slide que o feed mostra, no Reel é o
+   * frame de partida do Kling.
+   */
+  papel: z.literal("capa").optional(),
+  /**
+   * Imagem original que gerou a capa. Guardar isso é o que permite trocar o
+   * coverText e renderizar de novo sem ter que pagar outra geração no fal.
+   */
+  origemUrl: z.string().optional(),
 });
 export type MidiaItem = z.infer<typeof midiaItemSchema>;
 

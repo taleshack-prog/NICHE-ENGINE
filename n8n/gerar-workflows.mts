@@ -446,7 +446,16 @@ const imagens = midia.filter(m => m.tipo === 'imagem');
 if (imagens.length < 2) throw new Error('Carrossel exige no mínimo 2 imagens: ' + post.titulo);
 if (imagens.length > 10) throw new Error('Carrossel aceita no máximo 10 imagens: ' + post.titulo);
 
-return imagens.map(m => ({ json: { postId: post.id, legenda: post.legenda || '', url: m.url } }));`,
+// A capa gerada pelo dashboard mora em /midia/capas/... — caminho local. O Meta
+// BAIXA o arquivo do lado dele, então precisa de endereco publico.
+const BASE = ($env.APP_PUBLIC_URL || '').replace(/\\/+$/, '');
+function publica(u) {
+  if (/^https?:\\/\\//i.test(u)) return u;
+  if (!BASE) throw new Error('Midia local (' + u + ') e APP_PUBLIC_URL vazia no n8n: o Meta nao alcanca localhost.');
+  return BASE + '/' + u.replace(/^\\/+/, '');
+}
+
+return imagens.map(m => ({ json: { postId: post.id, legenda: post.legenda || '', url: publica(m.url) } }));`,
     ),
     http("b9", "Criar Container Filho", [720, -160], {
       method: "POST",
@@ -486,7 +495,20 @@ return [{ json: { childrenIds: ids.join(','), legenda: post.legenda || '' } }];`
 const midia = typeof post.midia_paths === 'string' ? JSON.parse(post.midia_paths || '[]') : (post.midia_paths || []);
 const video = midia.find(m => m.tipo === 'video');
 if (!video) throw new Error('Reel exige um item de mídia do tipo vídeo: ' + post.titulo);
-return [{ json: { url: video.url, legenda: post.legenda || '' } }];`,
+
+// A capa gerada pelo dashboard mora em /midia/capas/... — caminho local. O Meta
+// BAIXA o arquivo do lado dele, então precisa de endereco publico.
+const BASE = ($env.APP_PUBLIC_URL || '').replace(/\\/+$/, '');
+function publica(u) {
+  if (/^https?:\\/\\//i.test(u)) return u;
+  if (!BASE) throw new Error('Midia local (' + u + ') e APP_PUBLIC_URL vazia no n8n: o Meta nao alcanca localhost.');
+  return BASE + '/' + u.replace(/^\\/+/, '');
+}
+
+// A capa vai como cover_url do Reel — o Instagram mostra ela antes do play.
+// Usar a capa como primeiro quadro do vídeo faria o Kling deformar as letras.
+const capa = midia.find(m => m.papel === 'capa');
+return [{ json: { url: publica(video.url), coverUrl: capa ? publica(capa.url) : '', legenda: post.legenda || '' } }];`,
     ),
     http("b13", "Criar Container Reel", [720, 160], {
       method: "POST",
@@ -496,7 +518,7 @@ return [{ json: { url: video.url, legenda: post.legenda || '' } }];`,
       sendBody: true,
       specifyBody: "json",
       jsonBody:
-        "={{ JSON.stringify({ media_type: 'REELS', video_url: $json.url, caption: $json.legenda, share_to_feed: true }) }}",
+        "={{ JSON.stringify(Object.assign({ media_type: 'REELS', video_url: $json.url, caption: $json.legenda, share_to_feed: true }, $json.coverUrl ? { cover_url: $json.coverUrl } : {})) }}",
       options: {},
     }),
     // Ponto de junção: os dois ramos produzem {id}. Sem isto o nó de polling
