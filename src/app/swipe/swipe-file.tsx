@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, Plus, Sparkles, Trash2 } from "lucide-react";
+import { ExternalLink, PenLine, Plus, Sparkles, Trash2 } from "lucide-react";
+import { createPost } from "@/actions/posts";
 import { createTemplate, decomposeViral, deleteTemplate } from "@/actions/templates";
 import { Botao } from "@/components/ui/botao";
 import { AreaTexto, Campo, Input, Selecao } from "@/components/ui/campos";
@@ -56,6 +57,31 @@ export function SwipeFile({
       sucesso: "Template excluído.",
       aoConcluir: () => router.refresh(),
     });
+  }
+
+  /**
+   * Ponte do estágio 2 (recon viral) para o estágio 3 (produção).
+   *
+   * Sem ela o caminho era: sair do swipe file, ir em Produção, abrir "Novo
+   * post", achar o template num dropdown OPCIONAL. Post criado sem template não
+   * entra em nenhum agrupamento de padrão — some do relatório semanal em
+   * silêncio. Deixar o vínculo por conta de um campo opcional num outro lugar
+   * da interface era convidar exatamente esse esquecimento.
+   */
+  async function produzir(t: TemplateCard) {
+    await executar(
+      () =>
+        createPost({
+          titulo: t.gancho.slice(0, 120),
+          nichoId: t.nichoId,
+          templateId: t.id,
+          formato: "reel",
+        }),
+      {
+        sucesso: "Post criado e vinculado ao template.",
+        aoConcluir: () => router.push("/producao"),
+      },
+    );
   }
 
   return (
@@ -122,6 +148,15 @@ export function SwipeFile({
                   <div className="flex items-start justify-between gap-2">
                     <Selo tom="acento">{t.padrao}</Selo>
                     <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        title="Criar post a partir deste template"
+                        disabled={carregando}
+                        onClick={() => produzir(t)}
+                        className="rounded p-1 text-tenue hover:bg-superficie-2 hover:text-acento"
+                      >
+                        <PenLine className="size-3.5" />
+                      </button>
                       {link ? (
                         <a
                           href={link}

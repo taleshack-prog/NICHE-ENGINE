@@ -277,6 +277,7 @@ export async function listarPadroes(): Promise<string[]> {
 export type LinhaAnalytics = {
   id: string;
   titulo: string;
+  nicho: string;
   formato: string;
   padrao: string | null;
   publicadoEm: Date | null;
@@ -294,6 +295,7 @@ export async function tabelaAnalytics(): Promise<LinhaAnalytics[]> {
   const posts = await prisma.post.findMany({
     where: { status: "publicado" },
     include: {
+      nicho: { select: { nome: true } },
       template: { select: { padrao: true } },
       metricas: { orderBy: { dataColeta: "desc" }, take: 1 },
     },
@@ -305,6 +307,7 @@ export async function tabelaAnalytics(): Promise<LinhaAnalytics[]> {
     return {
       id: p.id,
       titulo: p.titulo,
+      nicho: p.nicho.nome,
       formato: p.formato,
       padrao: p.template?.padrao ?? null,
       publicadoEm: p.publicadoEm,

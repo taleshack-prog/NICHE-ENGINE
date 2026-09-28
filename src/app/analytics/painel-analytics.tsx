@@ -171,7 +171,7 @@ export function PainelAnalytics({
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">{l.titulo}</p>
                         <p className="text-[11px] text-tenue">
-                          {FORMATO_LABEL[l.formato as Formato] ?? l.formato} ·{" "}
+                          {l.nicho} · {FORMATO_LABEL[l.formato as Formato] ?? l.formato} ·{" "}
                           {fmtData(l.publicadoEm)}
                         </p>
                       </div>
@@ -221,6 +221,7 @@ function BlocoRelatorio({ r }: { r: ResultadoRelatorio }) {
         <CardConteudo className="p-4 text-sm text-alerta">
           {r.motivo}
           <span className="mt-1 block text-xs text-suave">
+            {r.nicho ? `Nicho analisado: ${r.nicho} · ` : ""}
             Posts com métricas nos últimos 7 dias: {r.postsNaJanela}.
           </span>
         </CardConteudo>
@@ -232,7 +233,7 @@ function BlocoRelatorio({ r }: { r: ResultadoRelatorio }) {
   return (
     <Card className="mb-4">
       <CardCabecalho>
-        <CardTitulo>Relatório da semana</CardTitulo>
+        <CardTitulo>Relatório da semana · {r.nicho}</CardTitulo>
         <p className="text-xs text-tenue">
           {r.topicosCriados} tópico(s) inserido(s) na fila de pauta — o Workflow A os consome na
           próxima execução.

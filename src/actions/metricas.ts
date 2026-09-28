@@ -144,21 +144,47 @@ export async function coletarMetricasAutomatico(): Promise<
 // ─────────────────────────────────────────────
 
 export type ResultadoRelatorio =
-  | { gerado: true; relatorio: RelatorioSemanal; topicosCriados: number }
-  | { gerado: false; motivo: string; postsNaJanela: number };
+  | { gerado: true; relatorio: RelatorioSemanal; topicosCriados: number; nicho: string }
+  | { gerado: false; motivo: string; postsNaJanela: number; nicho: string | null };
 
 /**
  * Relatório semanal de IA (Fase 4) + realimentação da tabela `topicos`.
  *
+ * ESCOPO: um nicho por relatório, sempre.
+ *
+ * A versão anterior lia posts de TODOS os nichos e depois gravava os tópicos
+ * resultantes no primeiro nicho ativo. Duas coisas erradas de uma vez:
+ *
+ * 1. Comparar padrão entre nichos não se sustenta. Audiência, saturação e CPM
+ *    são outros — um "contraste" que vence em finanças e perde em produtividade
+ *    não diz nada sobre o padrão, diz sobre os nichos. O prompt compararia P1
+ *    com P2 como se fossem do mesmo jogo.
+ * 2. A recomendação nascia de um conjunto misturado e ia parar na fila de pauta
+ *    de UM nicho — que o Workflow A consome para produzir conteúdo daquele
+ *    nicho. Conclusão de produtividade viraria pauta de cripto.
+ *
  * A guarda de 3 posts é regra do próprio prompt ("declare a incerteza"): com
  * menos de 3 posts a IA inevitavelmente inventa padrão. Melhor não chamar.
  */
-export async function relatorioSemanal(): Promise<ActionResult<ResultadoRelatorio>> {
-  return acao(z.object({}), {}, async () => {
+export async function relatorioSemanal(entrada: unknown = {}): Promise<
+  ActionResult<ResultadoRelatorio>
+> {
+  return acao(z.object({ nichoId: idSchema.optional() }), entrada, async (d) => {
     const inicio = inicioJanela7Dias();
+    const nicho = await nichoDoRelatorio(d.nichoId, inicio);
+
+    if (!nicho) {
+      return {
+        gerado: false,
+        motivo:
+          "Nenhum nicho ativo. Marque um nicho como ativo em /nichos — o relatório analisa um nicho por vez, porque comparar padrão entre nichos diferentes não se sustenta.",
+        postsNaJanela: 0,
+        nicho: null,
+      } satisfies ResultadoRelatorio;
+    }
 
     const posts = await prisma.post.findMany({
-      where: { publicadoEm: { gte: inicio } },
+      where: { nichoId: nicho.id, publicadoEm: { gte: inicio } },
       include: {
         template: { select: { padrao: true } },
         metricas: { orderBy: { dataColeta: "desc" }, take: 1 },
@@ -171,9 +197,9 @@ export async function relatorioSemanal(): Promise<ActionResult<ResultadoRelatori
     if (comMetrica.length < 3) {
       return {
         gerado: false,
-        motivo:
-          "São necessários pelo menos 3 posts com métricas nos últimos 7 dias. Com menos que isso, qualquer padrão apontado seria ruído.",
+        motivo: `São necessários pelo menos 3 posts com métricas nos últimos 7 dias em "${nicho.nome}". Com menos que isso, qualquer padrão apontado seria ruído.`,
         postsNaJanela: comMetrica.length,
+        nicho: nicho.nome,
       } satisfies ResultadoRelatorio;
     }
 
@@ -205,14 +231,8 @@ export async function relatorioSemanal(): Promise<ActionResult<ResultadoRelatori
       maxTokens: 3000,
     });
 
-    // Fecha o loop: a recomendação entra em `topicos` e o Workflow A a consome
-    // na próxima execução das 06h.
-    const nichoAtivo = await prisma.nicho.findFirst({
-      where: { status: "ativo" },
-      select: { id: true },
-      orderBy: { score: "desc" },
-    });
-
+    // Fecha o loop: a recomendação entra em `topicos` DO MESMO NICHO analisado,
+    // e o Workflow A a consome na próxima execução das 06h.
     const temas = [
       relatorio.recomendacaoProximaSemana,
       ...relatorio.hipoteses.slice(0, 2),
@@ -221,7 +241,7 @@ export async function relatorioSemanal(): Promise<ActionResult<ResultadoRelatori
     await prisma.topico.createMany({
       data: temas.map((tema, idx) => ({
         tema,
-        nichoId: nichoAtivo?.id ?? null,
+        nichoId: nicho.id,
         status: "pendente",
         prioridade: idx === 0 ? 10 : 5,
       })),
@@ -233,8 +253,44 @@ export async function relatorioSemanal(): Promise<ActionResult<ResultadoRelatori
       gerado: true,
       relatorio,
       topicosCriados: temas.length,
+      nicho: nicho.nome,
     } satisfies ResultadoRelatorio;
   });
+}
+
+/**
+ * Qual nicho o relatório analisa.
+ *
+ * Sem escolha explícita, prefere o nicho ATIVO com mais posts medidos na
+ * janela: é onde existe massa para comparar. Empate ou nenhum post medido cai
+ * no ativo de maior score, que é o que a operação elegeu como aposta.
+ */
+async function nichoDoRelatorio(
+  nichoId: string | undefined,
+  inicio: Date,
+): Promise<{ id: string; nome: string } | null> {
+  if (nichoId) {
+    return prisma.nicho.findUnique({ where: { id: nichoId }, select: { id: true, nome: true } });
+  }
+
+  const ativos = await prisma.nicho.findMany({
+    where: { status: "ativo" },
+    select: {
+      id: true,
+      nome: true,
+      score: true,
+      _count: { select: { posts: { where: { publicadoEm: { gte: inicio } } } } },
+    },
+    orderBy: { score: "desc" },
+  });
+
+  if (ativos.length === 0) return null;
+
+  const escolhido = [...ativos].sort(
+    (a, b) => b._count.posts - a._count.posts || (b.score ?? 0) - (a.score ?? 0),
+  )[0]!;
+
+  return { id: escolhido.id, nome: escolhido.nome };
 }
 
 /** Ranking do top 10% da semana — base do botão "promover a template". */
