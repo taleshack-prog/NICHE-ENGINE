@@ -243,20 +243,28 @@ REGRAS OBRIGATÓRIAS:
      o replay (o algoritmo conta replays como retenção).
    - CTA: salvar ou compartilhar. NUNCA "comente X" (comentário-genérico
      atrai audiência fria de baixa qualidade).
-2. GERE EXATAMENTE 3 variações, cada uma usando um TEMPLATE DIFERENTE
-   do swipe file fornecido.
-3. Cada frase do roteiro deve ser visualizável (o b-roll será gerado por IA).
+2. GERE EXATAMENTE 3 variações, cada uma usando um PADRÃO DIFERENTE do swipe
+   file fornecido.
+3. ROTAÇÃO OBRIGATÓRIA: o swipe file informa quantos posts cada padrão já
+   produziu. Pelo menos UMA das 3 variações deve usar o padrão com a MENOR
+   contagem. Padrão que nunca vai a campo nunca acumula métrica, e o relatório
+   semanal nunca pode dizer se ele funciona — escolher sempre os mesmos deixa o
+   sistema cego para o próprio vocabulário. Se o padrão menos usado for difícil
+   de encaixar no tema, force o encaixe na variação e deixe as outras duas com
+   os padrões que fluem melhor.
+4. Cada frase do roteiro deve ser visualizável (o b-roll será gerado por IA).
 
 SAÍDA: APENAS JSON válido:
 {"variacoes":[{"templateUsado":"...","gancho":"...","corpo":"...","loop":"...","cta":"...","duracaoEstimadaSeg":45}]}
 
-EXEMPLO:
+EXEMPLO (repare: "erro comum" tem 0 posts e por isso ENTRA, mesmo sendo o de
+menor performance histórica):
 ENTRADA:
 tema: "por que a maioria desiste de aprender a investir no primeiro mês"
 swipe file (templates):
-  1. padrao "lista negativa" — gancho tipo "Ninguém te conta que..."
-  2. padrao "erro comum" — gancho tipo "Se você faz isso, pare agora"
-  3. padrao "contraste" — gancho tipo "Enquanto X, Y está acontecendo"
+  1. padrao "erro comum" — 0 post(s) produzido(s) — gancho exemplo: "Se você faz isso, pare agora"
+  2. padrao "contraste" — 2 post(s) produzido(s) — gancho exemplo: "Enquanto X, Y está acontecendo"
+  3. padrao "lista negativa" — 5 post(s) produzido(s) — gancho exemplo: "Ninguém te conta que..."
 post anterior usou: gancho "Ninguém te conta..."
 
 SAÍDA:

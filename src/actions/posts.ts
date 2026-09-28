@@ -6,6 +6,7 @@ import { callClaudeStructured, iaDisponivel } from "@/lib/ai";
 import { prisma } from "@/lib/db";
 import { FORMATOS, POST_STATUS } from "@/lib/domain";
 import { gravarHashtags, lerHashtags, lerMidia } from "@/lib/json-fields";
+import { ordenarPorRotacao, swipeFileParaPrompt } from "@/lib/padroes";
 import { metaDisponivel, publicarNoInstagram } from "@/lib/meta";
 import {
   gerarCopyPrompt,
@@ -241,22 +242,37 @@ export async function gerarRoteiro(
       select: { nichoId: true },
     });
 
-    const templates = await prisma.templateViral.findMany({
+    // Um representante por PADRÃO, do menos testado para o mais — ver a nota em
+    // ordenarPorRotacao sobre por que ordenar por performance cegava o sistema.
+    const todos = await prisma.templateViral.findMany({
       where: { nichoId: post.nichoId },
-      orderBy: [{ performance: "desc" }, { criadoEm: "desc" }],
-      take: 6,
-      select: { padrao: true, gancho: true },
+      select: {
+        padrao: true,
+        gancho: true,
+        performance: true,
+        _count: { select: { posts: true } },
+      },
     });
 
-    if (templates.length < 3) {
+    const candidatos = ordenarPorRotacao(
+      todos.map((t) => ({
+        padrao: t.padrao,
+        gancho: t.gancho,
+        performance: t.performance,
+        usos: t._count.posts,
+      })),
+    );
+
+    // A guarda é sobre PADRÕES distintos, não sobre templates: três templates
+    // todos de "contraste" passariam por uma contagem de templates e ainda
+    // assim tornariam impossível a regra de 3 padrões diferentes.
+    if (candidatos.length < 3) {
       throw new Error(
-        `O prompt exige 3 templates diferentes e o swipe file deste nicho tem ${templates.length}. Cadastre mais templates em /swipe antes de gerar roteiro.`,
+        `O prompt exige 3 padrões diferentes e o swipe file deste nicho tem ${candidatos.length} (${candidatos.map((c) => c.padrao).join(", ") || "nenhum"}). Decomponha mais virais em /swipe antes de gerar roteiro.`,
       );
     }
 
-    const swipeFile = templates
-      .map((t, i) => `  ${i + 1}. padrao "${t.padrao}" — gancho tipo "${t.gancho}"`)
-      .join("\n");
+    const swipeFile = swipeFileParaPrompt(candidatos.slice(0, 6));
 
     // Gancho do último post publicado do nicho: base da regra "nunca repetir
     // gancho idêntico em posts consecutivos".

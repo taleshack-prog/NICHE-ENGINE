@@ -78,3 +78,63 @@ export function listaParaPrompt(padroes: readonly string[]): string {
   }
   return padroes.map((p) => `- ${p}`).join("\n");
 }
+
+export type TemplateParaRotacao = {
+  padrao: string;
+  gancho: string;
+  performance: number | null;
+  /** Posts já produzidos a partir DESTE template. */
+  usos: number;
+};
+
+export type CandidatoPadrao = {
+  padrao: string;
+  /** Gancho do template de melhor performance dentro do padrão. */
+  gancho: string;
+  performance: number;
+  /** Soma dos usos de TODOS os templates deste padrão. */
+  usos: number;
+};
+
+/**
+ * Agrupa templates por padrão e ordena do MENOS testado para o mais.
+ *
+ * POR QUE A ORDEM IMPORTA: o prompt de roteiro recebe esta lista e escolhe 3
+ * padrões lendo de cima para baixo. Ordenando por performance — como era antes
+ * — o modelo escolhia sempre os mesmos 3, e o padrão do fim da lista nunca ia a
+ * campo. Sem ir a campo não acumula métrica; sem métrica o relatório semanal não
+ * pode julgá-lo. O sistema ficava permanentemente cego para parte do próprio
+ * vocabulário, e de forma silenciosa: nada falhava, o padrão só nunca aparecia.
+ *
+ * Empate em usos desempata por performance: entre dois padrões igualmente
+ * inexplorados, comece pelo que tem melhor histórico de origem.
+ */
+export function ordenarPorRotacao(templates: readonly TemplateParaRotacao[]): CandidatoPadrao[] {
+  const porPadrao = new Map<string, CandidatoPadrao>();
+
+  for (const t of templates) {
+    const atual = porPadrao.get(t.padrao);
+    const perf = t.performance ?? 0;
+    porPadrao.set(t.padrao, {
+      padrao: t.padrao,
+      // Representante é o de melhor performance; usos somam o padrão inteiro.
+      gancho: !atual || perf > atual.performance ? t.gancho : atual.gancho,
+      performance: Math.max(perf, atual?.performance ?? 0),
+      usos: (atual?.usos ?? 0) + t.usos,
+    });
+  }
+
+  return [...porPadrao.values()].sort(
+    (a, b) => a.usos - b.usos || b.performance - a.performance,
+  );
+}
+
+/** Linhas do swipe file como o prompt de roteiro espera lê-las. */
+export function swipeFileParaPrompt(candidatos: readonly CandidatoPadrao[]): string {
+  return candidatos
+    .map(
+      (t, i) =>
+        `  ${i + 1}. padrao "${t.padrao}" — ${t.usos} post(s) produzido(s) — gancho exemplo: "${t.gancho}"`,
+    )
+    .join("\n");
+}
