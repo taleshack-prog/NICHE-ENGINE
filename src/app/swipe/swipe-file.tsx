@@ -3,7 +3,15 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ExternalLink, FlaskConical, PenLine, Plus, Sparkles, Sprout, Trash2 } from "lucide-react";
+import {
+  ExternalLink,
+  FilePlus,
+  FlaskConical,
+  Plus,
+  Sparkles,
+  Sprout,
+  Trash2,
+} from "lucide-react";
 import { createPost } from "@/actions/posts";
 import {
   createTemplate,
@@ -181,12 +189,13 @@ export function SwipeFile({
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
-                        title="Criar post a partir deste template"
+                        title="Cria um post novo já vinculado a este template"
                         disabled={carregando}
                         onClick={() => produzir(t)}
-                        className="rounded p-1 text-tenue hover:bg-superficie-2 hover:text-acento"
+                        className="flex items-center gap-1 rounded border border-borda px-1.5 py-0.5 text-[11px] text-suave transition-colors hover:border-acento hover:text-acento disabled:opacity-50"
                       >
-                        <PenLine className="size-3.5" />
+                        <FilePlus className="size-3" />
+                        Produzir
                       </button>
                       {link ? (
                         <a
