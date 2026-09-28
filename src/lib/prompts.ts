@@ -296,9 +296,16 @@ REGRAS:
 2. Métricas em ordem de importância para o algoritmo: salvamentos >
    compartilhamentos > retenção 3s > alcance > comentários > curtidas.
 3. Compare posts ENTRE SI na mesma semana (relativo, não absoluto).
-4. Hipóteses devem ser testáveis na próxima semana (uma variável por vez).
-5. A recomendação final deve ser específica o suficiente para virar
+4. TODA afirmação comparativa ("o maior", "o menor", "acima de") deve usar o
+   RANKING JÁ CALCULADO abaixo e citar os dois valores comparados. Não ordene
+   de cabeça e não estime: o ranking abaixo é a verdade, e uma comparação sem
+   os números ao lado é exatamente onde o erro passa despercebido.
+5. Hipóteses devem ser testáveis na próxima semana (uma variável por vez).
+6. A recomendação final deve ser específica o suficiente para virar
    instrução direta de produção (ex: "priorizar padrão X, evitar horário Y").
+
+RANKING POR MÉTRICA (já ordenado — use estes valores):
+{{ranking}}
 
 SAÍDA: APENAS JSON válido:
 {"padroesVencedores":[{"padrao":"...","evidencia":"..."}],

@@ -12,6 +12,7 @@ import {
   type RelatorioSemanal,
 } from "@/lib/prompts";
 import { normalizarRetencao, scorePost } from "@/lib/scoring";
+import { rankingPorMetrica } from "@/lib/ranking";
 import { diaRef, inicioJanela7Dias } from "@/lib/utils";
 import { acao, idSchema, type ActionResult } from "./_shared";
 
@@ -196,6 +197,7 @@ export async function relatorioSemanal(): Promise<ActionResult<ResultadoRelatori
 
     const prompt = interpolar(relatorioSemanalPrompt, {
       metricas: JSON.stringify(payload, null, 1),
+      ranking: rankingPorMetrica(payload),
     });
 
     const relatorio = await callClaudeStructured(prompt, relatorioSemanalSchema, {
