@@ -133,7 +133,17 @@ export function SwipeFile({
                 primeiro passo do sistema — a geração de roteiro exige 3 templates por nicho.
               </>
             ) : (
-              "Nenhum template com esses filtros."
+              <FiltroSemResultado
+                templates={templates}
+                nichos={nichos}
+                filtroNicho={filtroNicho}
+                filtroPadrao={filtroPadrao}
+                aoFiltrarNicho={setFiltroNicho}
+                aoLimpar={() => {
+                  setFiltroNicho("");
+                  setFiltroPadrao("");
+                }}
+              />
             )}
           </CardConteudo>
         </Card>
@@ -407,5 +417,98 @@ function FormularioManual({
         </form>
       </ModalConteudo>
     </Modal>
+  );
+}
+
+/**
+ * Estado vazio que diz ONDE o conteúdo está, não só que aqui não tem.
+ *
+ * "Nenhum template com esses filtros" é verdade e é inútil: quem filtrou por um
+ * nicho e não achou nada fica sem saber se o template não existe, se está em
+ * outro nicho, ou se o filtro quebrou. Mostrar a distribuição responde as três
+ * de uma vez — e os nichos viram atalho, porque quem lê "Finanças (7)" quer
+ * justamente ir para lá.
+ */
+function FiltroSemResultado({
+  templates,
+  nichos,
+  filtroNicho,
+  filtroPadrao,
+  aoFiltrarNicho,
+  aoLimpar,
+}: {
+  templates: TemplateCard[];
+  nichos: NichoOpcao[];
+  filtroNicho: string;
+  filtroPadrao: string;
+  aoFiltrarNicho: (id: string) => void;
+  aoLimpar: () => void;
+}) {
+  const nomeNicho = nichos.find((n) => n.id === filtroNicho)?.nome ?? null;
+
+  // Distribuição sempre sobre o TOTAL, não sobre o filtrado: o ponto é mostrar
+  // o que existe fora do recorte atual.
+  const porNicho = new Map<string, { nome: string; qtd: number }>();
+  for (const t of templates) {
+    const atual = porNicho.get(t.nichoId);
+    porNicho.set(t.nichoId, { nome: t.nicho.nome, qtd: (atual?.qtd ?? 0) + 1 });
+  }
+  const distribuicao = [...porNicho.entries()].sort((a, b) => b[1].qtd - a[1].qtd);
+
+  const padroesNoNicho = [
+    ...new Set(
+      templates.filter((t) => !filtroNicho || t.nichoId === filtroNicho).map((t) => t.padrao),
+    ),
+  ].sort();
+
+  return (
+    <div className="space-y-3">
+      <p>
+        Nenhum template
+        {nomeNicho ? (
+          <>
+            {" "}
+            em <strong className="text-texto">{nomeNicho}</strong>
+          </>
+        ) : null}
+        {filtroPadrao ? (
+          <>
+            {" "}
+            com padrão <strong className="text-texto">{filtroPadrao}</strong>
+          </>
+        ) : null}
+        .
+      </p>
+
+      <p className="text-xs">
+        {templates.length} template(s) no swipe file, distribuídos assim:
+      </p>
+      <div className="flex flex-wrap justify-center gap-1.5">
+        {distribuicao.map(([id, { nome, qtd }]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => aoFiltrarNicho(id)}
+            className="rounded-md border border-borda px-2 py-1 text-xs text-suave transition-colors hover:border-acento hover:text-acento"
+          >
+            {nome} ({qtd})
+          </button>
+        ))}
+      </div>
+
+      {filtroPadrao && padroesNoNicho.length > 0 ? (
+        <p className="text-xs">
+          Padrões disponíveis{nomeNicho ? ` em ${nomeNicho}` : ""}: {padroesNoNicho.join(", ")}.
+        </p>
+      ) : null}
+
+      <button
+        type="button"
+        onClick={aoLimpar}
+        className="text-xs text-acento underline-offset-2 hover:underline"
+      >
+        Limpar filtros
+      </button>
+    </div>
   );
 }
