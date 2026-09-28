@@ -29,6 +29,7 @@ import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MODELO_PADRAO } from "../src/lib/ai.js";
+import { MODELOS_FAL } from "../src/lib/fal.js";
 import {
   decomposeViralPrompt,
   gerarCopyPrompt,
@@ -277,7 +278,9 @@ return [{ json: {
     ),
     http("a7", "Fal - Gerar Imagens", [500, 0], {
       method: "POST",
-      url: "https://fal.run/fal-ai/flux/dev",
+      // Mesmo modelo do dashboard, mesma variável de ambiente. Literal aqui
+      // faria a automação divergir do editor na primeira troca de modelo.
+      url: `=https://fal.run/{{ $env.FAL_MODEL_IMAGEM || '${MODELOS_FAL.imagem}' }}`,
       sendHeaders: true,
       headerParameters: {
         parameters: [
@@ -293,7 +296,7 @@ return [{ json: {
     }),
     http("a8", "Kling - Submeter Vídeo", [720, 0], {
       method: "POST",
-      url: "https://queue.fal.run/fal-ai/kling-video/v1/standard/image-to-video",
+      url: `=https://queue.fal.run/{{ $env.FAL_MODEL_VIDEO || '${MODELOS_FAL.video}' }}`,
       sendHeaders: true,
       headerParameters: {
         parameters: [

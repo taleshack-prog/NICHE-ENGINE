@@ -146,7 +146,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "https://fal.run/fal-ai/flux/dev",
+        "url": "=https://fal.run/{{ $env.FAL_MODEL_IMAGEM || 'fal-ai/flux/dev' }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -177,7 +177,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "https://queue.fal.run/fal-ai/kling-video/v1/standard/image-to-video",
+        "url": "=https://queue.fal.run/{{ $env.FAL_MODEL_VIDEO || 'fal-ai/kling-video/v2.5-turbo/pro/image-to-video' }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

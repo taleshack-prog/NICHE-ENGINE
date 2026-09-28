@@ -218,6 +218,12 @@ o resto decorativo, que é uma capa com anexos.
   no Workflow B. Carrossel fora de ordem conta a história ao contrário.
 - **Custo:** uma imagem paga por slide. O botão avisa antes.
 
+> Os IDs dos modelos do fal vivem em `MODELOS_FAL` (`src/lib/fal.ts`) e o
+> gerador dos workflows n8n lê de lá. No JSON eles saem como expressão
+> `$env.FAL_MODEL_*` com esse default, então trocar de modelo no `.env` vale
+> para o dashboard **e** para a automação. O `docker-compose` repassa
+> `FAL_MODEL_IMAGEM` e `FAL_MODEL_VIDEO` ao n8n.
+
 ### Reel — um clique, vídeo narrado e legendado
 
 `Reel` no editor encadeia, tudo dentro do fal.ai com a mesma `FAL_KEY`:

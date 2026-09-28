@@ -38,23 +38,35 @@ function headers(): HeadersInit {
   };
 }
 
-const MODELO_IMAGEM = () => process.env.FAL_MODEL_IMAGEM || "fal-ai/flux/dev";
-
 /**
- * Kling v2.5-turbo/pro. O default antigo era `kling-video/v1/standard`, que o
- * fal.ai marca como **deprecated, no longer supported** — ia parar de responder
- * sem aviso, e o sintoma seria "fila travada", não "modelo removido".
+ * IDs padrão dos modelos do fal — FONTE DA VERDADE ÚNICA.
  *
- * Tiers `standard` custam menos por segundo. Trocar por `FAL_MODEL_VIDEO` é a
- * alavanca de custo mais direta do sistema: o vídeo é ~90% da conta de um Reel.
+ * Exportado porque o gerador dos workflows n8n (`n8n/gerar-workflows.mts`) lê
+ * daqui. A URL do fal estava escrita à mão dentro do JSON do Workflow A: com
+ * duas cópias, trocar de modelo no dashboard deixava a automação chamando o
+ * endpoint antigo, e o sintoma — produção automática parando de madrugada —
+ * não apontaria para a causa.
+ *
+ * `kling-video/v1/standard` era o default anterior e o fal.ai o marca como
+ * **deprecated, no longer supported**. Tiers `standard` custam menos por
+ * segundo: `FAL_MODEL_VIDEO` é a alavanca de custo mais direta do sistema,
+ * porque o vídeo é ~90% da conta de um Reel.
  */
-const MODELO_VIDEO = () =>
-  process.env.FAL_MODEL_VIDEO || "fal-ai/kling-video/v2.5-turbo/pro/image-to-video";
+export const MODELOS_FAL = {
+  imagem: "fal-ai/flux/dev",
+  video: "fal-ai/kling-video/v2.5-turbo/pro/image-to-video",
+  voz: "fal-ai/kokoro/brazilian-portuguese",
+  transcricao: "fal-ai/whisper",
+  montagem: "fal-ai/ffmpeg-api/compose",
+  legenda: "fal-ai/auto-caption",
+} as const;
 
-const MODELO_VOZ = () => process.env.FAL_MODEL_VOZ || "fal-ai/kokoro/brazilian-portuguese";
-const MODELO_TRANSCRICAO = () => process.env.FAL_MODEL_TRANSCRICAO || "fal-ai/whisper";
-const MODELO_MONTAGEM = () => process.env.FAL_MODEL_MONTAGEM || "fal-ai/ffmpeg-api/compose";
-const MODELO_LEGENDA = () => process.env.FAL_MODEL_LEGENDA || "fal-ai/auto-caption";
+const MODELO_IMAGEM = () => process.env.FAL_MODEL_IMAGEM || MODELOS_FAL.imagem;
+const MODELO_VIDEO = () => process.env.FAL_MODEL_VIDEO || MODELOS_FAL.video;
+const MODELO_VOZ = () => process.env.FAL_MODEL_VOZ || MODELOS_FAL.voz;
+const MODELO_TRANSCRICAO = () => process.env.FAL_MODEL_TRANSCRICAO || MODELOS_FAL.transcricao;
+const MODELO_MONTAGEM = () => process.env.FAL_MODEL_MONTAGEM || MODELOS_FAL.montagem;
+const MODELO_LEGENDA = () => process.env.FAL_MODEL_LEGENDA || MODELOS_FAL.legenda;
 
 /** Segundos de clipe que o Kling entrega por chamada. Ver CUSTO_CLIPE_USD. */
 export const SEGUNDOS_POR_CLIPE = 5;
