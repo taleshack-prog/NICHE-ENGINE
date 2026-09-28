@@ -6,7 +6,13 @@ import { aplicarCapa, formatoValido, renderizarCapa, renderizarSlide } from "@/l
 import { callClaudeStructured, iaDisponivel } from "@/lib/ai";
 import { prisma } from "@/lib/db";
 import { TIPOS_MIDIA } from "@/lib/domain";
-import { falDisponivel, gerarImagens, gerarVideo, promptVisualDeRoteiro } from "@/lib/fal";
+import {
+  RESTRICOES_VISUAIS,
+  falDisponivel,
+  gerarImagens,
+  gerarVideo,
+  promptVisualDeRoteiro,
+} from "@/lib/fal";
 import { gravarMidia, lerMidia, type MidiaItem } from "@/lib/json-fields";
 import { gerarSlidesPrompt, gerarSlidesSchema, interpolar } from "@/lib/prompts";
 import { acao, idSchema, type ActionResult } from "./_shared";
@@ -72,14 +78,6 @@ export async function gerarCapa(entrada: unknown): Promise<ActionResult<{ url: s
     return { url: capa.url };
   });
 }
-
-/**
- * Repetida em todo prompt de imagem. O modelo de imagem não vê as regras do
- * prompt de texto: sem isto, volta a desenhar rostos e a inventar letras.
- */
-const RESTRICOES_VISUAIS =
-  "No people, no faces, no hands. No text, no letters, no numbers, no logos, no watermarks. " +
-  "Clean empty negative space across the bottom third. Photographic realism, no illustration.";
 
 /**
  * Carrossel completo a partir do roteiro: texto em TODOS os slides.

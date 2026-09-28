@@ -143,8 +143,10 @@ export async function publicarNoInstagram(args: {
   if (formato === "carrossel") {
     // Ordem explícita quando existe: um carrossel fora de ordem conta a história
     // ao contrário, e a ordem do array já foi mexida por edições de capa.
+    // Exclui as cenas do Reel: são imagens, mas são matéria-prima do vídeo.
+    // Publicá-las como slides mandaria ao ar o storyboard em vez do post.
     const imagens = midia
-      .filter((m) => m.tipo === "imagem")
+      .filter((m) => m.tipo === "imagem" && m.papel !== "cena")
       .sort((a, b) => (a.ordem ?? 99) - (b.ordem ?? 99));
     if (imagens.length < 2) {
       throw new MetaError(`carrossel exige no mínimo 2 imagens (recebeu ${imagens.length})`);
@@ -169,7 +171,11 @@ export async function publicarNoInstagram(args: {
     });
     containerId = pai.id;
   } else if (formato === "reel") {
-    const video = midia.find((m) => m.tipo === "video");
+    // `final` primeiro: a lista também guarda os clipes de cada cena, e pegar
+    // o primeiro vídeo publicaria 5 segundos de b-roll mudo no lugar do Reel.
+    const video =
+      midia.find((m) => m.papel === "final" && m.tipo === "video") ??
+      midia.find((m) => m.tipo === "video");
     if (!video) throw new MetaError("Reel exige um item de mídia do tipo vídeo");
 
     // A capa entra como `cover_url`, não como primeiro quadro: é ela que o feed

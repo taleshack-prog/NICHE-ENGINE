@@ -554,3 +554,93 @@ AGORA GERE PARA:
 roteiro: {{roteiro}}
 nicho: {{nicho}}
 persona: {{persona}}`;
+
+// ─────────────────────────────────────────────
+// 7.6 — CENAS DE B-ROLL PARA O REEL
+// ─────────────────────────────────────────────
+
+/**
+ * Converte o roteiro narrado em cenas de b-roll, uma por bloco de fala.
+ *
+ * POR QUE NÃO BASTA UM PROMPT ÚNICO: o sistema gerava UMA imagem a partir do
+ * roteiro inteiro e animava ela. Quarenta segundos de narração em cima de um
+ * único plano é o formato que o espectador abandona aos cinco segundos — não
+ * há nada novo entrando na tela. Cena por bloco de fala é o que cria corte, e
+ * corte é o que sustenta retenção num vídeo sem rosto.
+ *
+ * `direcaoVisual` existe pelo mesmo motivo do carrossel: prompts independentes
+ * devolvem oito cenas de oito bancos de imagem diferentes, e o vídeo parece
+ * montado com o que sobrou em vez de filmado para aquele roteiro.
+ */
+export const gerarCenasSchema = z
+  .object({
+    direcaoVisual: z.string().min(20).max(400),
+    cenas: z
+      .array(
+        z.object({
+          ordem: z.number().int().min(1).max(20),
+          promptVisual: z.string().min(15).max(400),
+          movimento: z.string().min(5).max(200),
+        }),
+      )
+      .min(1)
+      .max(20),
+  })
+  .refine((d) => d.cenas.every((c, i) => c.ordem === i + 1), {
+    message: "as cenas devem vir numeradas de 1 a N, em ordem",
+  });
+export type CenasGeradas = z.infer<typeof gerarCenasSchema>;
+export type CenaBroll = CenasGeradas["cenas"][number];
+
+export const gerarCenasPrompt = `Você é diretor de fotografia de Reels faceless.
+Recebe um roteiro JÁ NARRADO, quebrado em blocos com o tempo exato de cada um, e
+descreve a cena de b-roll que acompanha cada bloco.
+
+REGRAS OBRIGATÓRIAS:
+1. UMA CENA POR BLOCO, na mesma ordem, numeradas de 1 a N. Nem uma a mais, nem
+   uma a menos: cada cena vira um clipe que ocupa exatamente aquele tempo.
+2. A CENA ILUSTRA O QUE ESTÁ SENDO DITO NAQUELE BLOCO — não o tema geral do
+   vídeo. Cena genérica repetida em blocos diferentes destrói o corte: o
+   espectador vê a mesma imagem e entende que nada avançou.
+3. CENAS CONSECUTIVAS PRECISAM SER VISIVELMENTE DIFERENTES entre si. Mude o
+   objeto, a escala ou o ângulo. Duas cenas parecidas em sequência são lidas
+   como uma cena só e o vídeo perde um corte.
+4. promptVisual EM INGLÊS: um OBJETO ou AMBIENTE CONCRETO.
+   - PROIBIDO: pessoas, rostos, mãos, multidões, texto, letras, números, logos,
+     interface de aplicativo. Rosto genérico é a estética que denuncia conteúdo
+     automático; e letra inventada pelo gerador aparece por baixo da legenda.
+   - Enquadramento VERTICAL. Deixe o terço inferior da cena limpo: é onde a
+     legenda queimada entra.
+5. movimento EM INGLÊS: o movimento de câmera daquele clipe, curto e físico
+   ("slow push-in", "lateral drift to the right", "slow tilt down"). NUNCA peça
+   corte, transição ou mudança de assunto dentro do clipe: o gerador de vídeo
+   anima um plano só, e pedir corte devolve deformação.
+6. direcaoVisual: UMA frase EM INGLÊS com o estilo comum a TODAS as cenas
+   (paleta, luz, material, tipo de lente). É o que faz as cenas parecerem do
+   mesmo vídeo.
+7. O EXEMPLO ABAIXO ENSINA FORMATO, NÃO CONTEÚDO. É de outro nicho de propósito.
+   Se o seu resultado mencionar pão, forno ou farinha, você copiou em vez de gerar.
+
+SAÍDA: APENAS JSON válido:
+{"direcaoVisual":"...","cenas":[{"ordem":1,"promptVisual":"...","movimento":"..."}]}
+
+EXEMPLO:
+ENTRADA:
+nicho: "panificação artesanal"
+blocos:
+  1. (0,0s-4,2s) "Seu pão não cresceu porque a água estava fria."
+  2. (4,2s-9,6s) "Fermento natural para abaixo de vinte e quatro graus."
+  3. (9,6s-15,1s) "Um termômetro de dez reais resolve o que três anos de tentativa não resolveram."
+
+SAÍDA:
+{"direcaoVisual":"Rustic kitchen still life, single window light from the left, flour dust in the air, warm ivory and burnt-umber palette, worn wood and matte ceramic, shallow depth of field, clean empty space across the bottom third, vertical framing",
+"cenas":[
+{"ordem":1,"promptVisual":"A dense flat round of dough sunk in a floured proofing basket on dark wood, cold grey window light, empty surface below","movimento":"slow push-in toward the center of the dough"},
+{"ordem":2,"promptVisual":"Water pouring into a ceramic bowl of flour, condensation beading on the glass jug beside it, cool light, empty wooden surface beneath","movimento":"slow tilt down following the pouring water"},
+{"ordem":3,"promptVisual":"A small analog thermometer standing in a bowl of dough on a kitchen counter, warm side light, wide empty counter in the foreground","movimento":"slow lateral drift to the right"}
+]}
+
+AGORA GERE PARA:
+nicho: {{nicho}}
+blocos:
+{{blocos}}`;

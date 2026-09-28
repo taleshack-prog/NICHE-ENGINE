@@ -19,10 +19,20 @@ export const midiaItemSchema = z.object({
    * primeira posição: no carrossel é o slide que o feed mostra, no Reel vai
    * como `cover_url` do container.
    * "slide" = demais telas de um carrossel gerado, com texto próprio.
+   *
+   * Etapas intermediárias do Reel, guardadas para a geração ser RETOMÁVEL:
+   * "narracao" (áudio), "cena" (imagem de uma cena), "clipe" (vídeo de uma
+   * cena) e "final" (vídeo montado e legendado). Um Reel leva minutos e várias
+   * chamadas pagas; sem marcar o que já ficou pronto, cada nova tentativa
+   * pagaria tudo de novo desde a voz.
    */
-  papel: z.enum(["capa", "slide"]).optional(),
-  /** Posição no carrossel (1 = capa). Define a ordem de publicação. */
+  papel: z.enum(["capa", "slide", "narracao", "cena", "clipe", "final"]).optional(),
+  /** Posição no carrossel ou na linha do tempo do Reel (1 = primeira). */
   ordem: z.number().int().min(1).max(20).optional(),
+  /** Início na linha do tempo do Reel, em ms. Só nas cenas e clipes. */
+  inicioMs: z.number().int().min(0).optional(),
+  /** Duração na linha do tempo do Reel, em ms. */
+  duracaoMs: z.number().int().min(1).optional(),
   /** Texto queimado nesta imagem — permite re-renderizar sem chamar a IA de novo. */
   texto: z.string().max(300).optional(),
   /**

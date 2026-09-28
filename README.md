@@ -218,6 +218,34 @@ o resto decorativo, que é uma capa com anexos.
   no Workflow B. Carrossel fora de ordem conta a história ao contrário.
 - **Custo:** uma imagem paga por slide. O botão avisa antes.
 
+### Reel — um clique, vídeo narrado e legendado
+
+`Reel` no editor encadeia, tudo dentro do fal.ai com a mesma `FAL_KEY`:
+
+1. **Narração** pt-BR (`fal-ai/kokoro/brazilian-portuguese`) a partir do roteiro.
+2. **Tempos** (`fal-ai/whisper`) — a transcrição diz quanto tempo a voz levou em
+   cada trecho. Estimar por contagem de palavras dessincroniza em segundos e o
+   corte passa a cair no meio da frase.
+3. **Cenas** — a IA quebra o roteiro em uma cena de b-roll por bloco de fala,
+   com direção visual comum. Um plano único de 40 s é o que o espectador
+   abandona aos cinco segundos; corte é o que sustenta retenção sem rosto.
+4. **Clipes** (`FAL_MODEL_VIDEO`, Kling) — um por cena, a partir da imagem dela.
+5. **Montagem** (`fal-ai/ffmpeg-api/compose`) — clipes na linha do tempo + voz.
+6. **Legenda queimada** (`fal-ai/auto-caption`) — a maioria assiste sem som.
+7. **Capa** sobre a primeira cena, publicada como `cover_url` do Reel.
+
+**É retomável.** Cada etapa grava o que produziu em `midia_paths` com um
+`papel` (`narracao`, `cena`, `clipe`, `final`) e a execução seguinte pula o que
+já existe. Um Reel leva minutos e dezenas de chamadas pagas: sem isso, uma
+falha no último passo mandaria pagar tudo de novo — e a narração nova teria
+tempos diferentes, invalidando todos os clipes prontos. Para refazer do zero,
+use **Refazer**; a retomada é cega e reaproveitaria os clipes antigos.
+
+**Custo.** A estimativa aparece antes de gerar. Referência de 28/09/2026 no
+v2.5-turbo/pro: US$ 0,35 por clipe de 5 s — um Reel de 40 s ≈ 8 clipes ≈
+US$ 2,80. `REEL_MAX_CLIPES` recusa roteiros longos demais; `FAL_MODEL_VIDEO`
+aponta para um tier mais barato quando o volume subir.
+
 ### Capa — o texto vai queimado na imagem
 
 O `coverText` que a IA gera **não é só um campo**: `src/lib/capa.ts` compõe a frase

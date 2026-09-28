@@ -5,6 +5,7 @@ import {
   CalendarClock,
   Download,
   Film,
+  Clapperboard,
   GalleryHorizontalEnd,
   Image as ImageIcon,
   Send,
@@ -31,6 +32,7 @@ import {
   gerarMidia,
   removerMidia,
 } from "@/actions/midia";
+import { gerarReel, limparEtapasReel } from "@/actions/reel";
 import { Botao } from "@/components/ui/botao";
 import { AreaTexto, Campo, Input, Selecao } from "@/components/ui/campos";
 import { Selo } from "@/components/ui/selo";
@@ -89,6 +91,9 @@ export function EditorPost({
   const palavrasCover = contarPalavras(coverText);
   const temImagem = post.midiaLista.some((m) => m.tipo === "imagem");
   const capa = post.midiaLista.find((m) => m.papel === "capa");
+  const reelPronto = post.midiaLista.find((m) => m.papel === "final");
+  const clipesFeitos = post.midiaLista.filter((m) => m.papel === "clipe").length;
+  const cenasFeitas = post.midiaLista.filter((m) => m.papel === "cena").length;
   const slides = post.midiaLista.filter((m) => m.papel === "capa" || m.papel === "slide").length;
 
   async function salvarCampos() {
@@ -144,6 +149,39 @@ export function EditorPost({
       setCoverText(c.coverText);
       aoAtualizar();
     }
+  }
+
+  /**
+   * Cadeia completa do Reel. O confirm existe porque é a ação mais cara do
+   * sistema — e porque ela demora minutos: sem aviso, o usuário fecha o editor
+   * no meio achando que travou.
+   */
+  async function reel() {
+    const retomando = cenasFeitas > 0 || clipesFeitos > 0;
+    const aviso = retomando
+      ? `Retomando: ${cenasFeitas} cenas e ${clipesFeitos} clipes já prontos serão reaproveitados. Continuar?`
+      : "Gera narração, cenas, clipes, montagem e legenda. Leva alguns minutos e custa cerca de US$ 0,35 por 5 s de vídeo. Continuar?";
+    if (!window.confirm(aviso)) return;
+
+    toast.info("Produzindo o Reel. Cada etapa é salva — se o navegador cair, clique de novo e ele continua.");
+    const r = await midia.executar(() => gerarReel({ postId: post.id }), {
+      aoConcluir: aoAtualizar,
+    });
+    if (r && typeof r === "object" && "videoUrl" in r) {
+      const d = r as { clipes: number; duracaoSeg: number; custoEstimadoUsd: number };
+      toast.success(
+        `Reel pronto: ${d.duracaoSeg}s, ${d.clipes} cortes, narrado e legendado (~US$ ${d.custoEstimadoUsd}).`,
+      );
+    }
+  }
+
+  /** Descarta narração, cenas e clipes para refazer do zero com outro roteiro. */
+  async function refazerReel() {
+    if (!window.confirm("Descartar narração, cenas e clipes e refazer do zero? O que já foi gerado não volta.")) return;
+    await midia.executar(() => limparEtapasReel({ postId: post.id, tudo: true }), {
+      sucesso: "Etapas descartadas. Clique em Reel para gerar de novo.",
+      aoConcluir: aoAtualizar,
+    });
   }
 
   async function gerarImagem() {
@@ -510,6 +548,20 @@ export function EditorPost({
                   Carrossel
                 </Botao>
                 <Botao
+                  variante="primario"
+                  tamanho="sm"
+                  onClick={reel}
+                  disabled={ocupado || !falDisponivel || !iaDisponivel || formato !== "reel"}
+                  title={
+                    formato !== "reel"
+                      ? "Mude o formato para Reel"
+                      : "Roteiro → narração, cenas, clipes, montagem e legenda"
+                  }
+                >
+                  <Clapperboard />
+                  {midia.carregando ? "Produzindo…" : "Reel"}
+                </Botao>
+                <Botao
                   variante="contorno"
                   tamanho="sm"
                   onClick={gerarImagem}
@@ -531,6 +583,30 @@ export function EditorPost({
                 </Botao>
               </div>
             </div>
+
+            {reelPronto ? (
+              <div className="flex items-center gap-2 rounded-md border border-acento/40 bg-acento/10 px-2 py-1.5">
+                <p className="flex-1 text-[11px] text-suave">
+                  Reel montado, narrado e legendado. A capa vai como thumbnail na publicação.
+                </p>
+                <a
+                  href={reelPronto.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-md border border-borda px-2 py-1 text-[11px] text-acento hover:text-texto"
+                >
+                  Assistir
+                </a>
+                <Botao variante="fantasma" tamanho="sm" onClick={refazerReel} disabled={ocupado}>
+                  Refazer
+                </Botao>
+              </div>
+            ) : clipesFeitos > 0 || cenasFeitas > 0 ? (
+              <p className="rounded-md border border-alerta/40 bg-alerta/10 px-2 py-1.5 text-[11px] text-suave">
+                Reel em produção: {cenasFeitas} cenas e {clipesFeitos} clipes prontos. Clique em{" "}
+                <strong>Reel</strong> para continuar de onde parou — o que já foi gerado não é pago de novo.
+              </p>
+            ) : null}
 
             {slides > 1 ? (
               <div className="flex items-center gap-2 rounded-md border border-acento/40 bg-acento/10 px-2 py-1.5">
@@ -557,15 +633,30 @@ export function EditorPost({
                     key={m.url}
                     className="group relative overflow-hidden rounded-md border border-borda bg-superficie-2"
                   >
-                    {/* next/image exigiria allowlist de domínios; as URLs vêm do
-                        fal.ai e de onde o usuário colar. <img> é o certo aqui. */}
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={m.url}
-                      alt={m.tipo}
-                      className="aspect-square w-full object-cover"
-                      loading="lazy"
-                    />
+                    {m.tipo === "imagem" ? (
+                      /* next/image exigiria allowlist de domínios; as URLs vêm do
+                         fal.ai e de onde o usuário colar. <img> é o certo aqui. */
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={m.url}
+                        alt={m.tipo}
+                        className="aspect-square w-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : m.tipo === "video" ? (
+                      // Sem `preload`, o navegador baixaria os 8 clipes inteiros
+                      // ao abrir o editor. `metadata` traz só o primeiro quadro.
+                      <video
+                        src={m.url}
+                        controls
+                        preload="metadata"
+                        className="aspect-square w-full bg-black object-cover"
+                      />
+                    ) : (
+                      <div className="flex aspect-square w-full items-center justify-center p-2">
+                        <audio src={m.url} controls className="w-full" preload="metadata" />
+                      </div>
+                    )}
                     <span
                       className={`absolute left-1 top-1 rounded px-1 text-[9px] uppercase ${
                         m.papel
@@ -574,13 +665,21 @@ export function EditorPost({
                       }`}
                     >
                       {m.papel === "capa"
-                        ? `capa 1/${slides}`
+                        ? slides > 1
+                          ? `capa 1/${slides}`
+                          : "capa"
                         : m.papel === "slide"
                           ? `${m.ordem ?? "?"}/${slides}`
-                          : m.tipo}
+                          : m.papel === "final"
+                            ? "reel"
+                            : m.papel === "narracao"
+                              ? "voz"
+                              : m.papel === "cena" || m.papel === "clipe"
+                                ? `${m.papel} ${m.ordem ?? "?"}`
+                                : m.tipo}
                     </span>
                     <div className="absolute right-1 top-1 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                      {m.papel ? (
+                      {m.papel === "capa" || m.papel === "slide" || m.papel === "final" ? (
                         <a
                           href={m.url}
                           // Nome legível e ordenável na pasta de downloads: o

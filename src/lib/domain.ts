@@ -52,8 +52,15 @@ export type CategoriaGancho = (typeof CATEGORIAS_GANCHO)[number];
 export const TOPICO_STATUS = ["pendente", "em_producao", "concluido"] as const;
 export type TopicoStatus = (typeof TOPICO_STATUS)[number];
 
-/** Tipos de mídia anexável a um post. */
-export const TIPOS_MIDIA = ["imagem", "video"] as const;
+/**
+ * Tipos de mídia anexável a um post.
+ *
+ * "audio" entrou com a cadeia de Reel: a narração é um artefato pago que
+ * precisa sobreviver entre execuções. Sem guardá-la, uma montagem que falhou
+ * no último passo mandaria gerar voz de novo — e a voz nova teria tempos
+ * diferentes, invalidando todos os clipes já produzidos.
+ */
+export const TIPOS_MIDIA = ["imagem", "video", "audio"] as const;
 export type TipoMidia = (typeof TIPOS_MIDIA)[number];
 
 /**
