@@ -2,9 +2,15 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, PenLine, Plus, Sparkles, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { ExternalLink, FlaskConical, PenLine, Plus, Sparkles, Sprout, Trash2 } from "lucide-react";
 import { createPost } from "@/actions/posts";
-import { createTemplate, decomposeViral, deleteTemplate } from "@/actions/templates";
+import {
+  createTemplate,
+  decomposeViral,
+  deleteTemplate,
+  semearSwipeFile,
+} from "@/actions/templates";
 import { Botao } from "@/components/ui/botao";
 import { AreaTexto, Campo, Input, Selecao } from "@/components/ui/campos";
 import { Card, CardConteudo } from "@/components/ui/card";
@@ -12,6 +18,7 @@ import { Modal, ModalConteudo, ModalGatilho } from "@/components/ui/modal";
 import { Selo } from "@/components/ui/selo";
 import { useAcao } from "@/components/ui/use-acao";
 import { lerEstrutura } from "@/lib/json-fields";
+import { ehHipotese } from "@/lib/padroes";
 import { fmtNum } from "@/lib/utils";
 
 export type TemplateCard = {
@@ -93,6 +100,12 @@ export function SwipeFile({
           aoSalvar={() => router.refresh()}
         />
         <FormularioManual nichos={nichos} aoSalvar={() => router.refresh()} />
+        <FormularioSemeadura
+          nichos={nichos}
+          iaDisponivel={iaDisponivel}
+          nichoPadrao={filtroNicho || undefined}
+          aoSalvar={() => router.refresh()}
+        />
 
         <div className="ml-auto flex items-center gap-2">
           <Selecao
@@ -156,7 +169,15 @@ export function SwipeFile({
               <Card key={t.id} className="flex flex-col">
                 <CardConteudo className="flex-1 space-y-3 p-4">
                   <div className="flex items-start justify-between gap-2">
-                    <Selo tom="acento">{t.padrao}</Selo>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Selo tom="acento">{t.padrao}</Selo>
+                      {ehHipotese(t.fonte) ? (
+                        <Selo tom="alerta">
+                          <FlaskConical className="mr-1 size-3" />
+                          hipótese
+                        </Selo>
+                      ) : null}
+                    </div>
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
@@ -510,5 +531,97 @@ function FiltroSemResultado({
         Limpar filtros
       </button>
     </div>
+  );
+}
+
+/**
+ * Semeadura do swipe file: resolve a partida a frio de um nicho novo.
+ *
+ * O nicho vem pré-selecionado pelo filtro ativo, porque quem clica aqui quase
+ * sempre acabou de ver "Nenhum template em X".
+ */
+function FormularioSemeadura({
+  nichos,
+  iaDisponivel,
+  aoSalvar,
+  nichoPadrao,
+}: {
+  nichos: NichoOpcao[];
+  iaDisponivel: boolean;
+  aoSalvar: () => void;
+  nichoPadrao?: string;
+}) {
+  const [aberto, setAberto] = React.useState(false);
+  const { carregando, campos, executar } = useAcao();
+
+  async function enviar(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const r = await executar(
+      () =>
+        semearSwipeFile({
+          nichoId: fd.get("nichoId"),
+          quantidade: fd.get("quantidade"),
+        }),
+      { sucesso: "Swipe file semeado." },
+    );
+    if (r) {
+      toast.message(`${r.criados} hipótese(s): ${r.padroes.join(", ")}`);
+      setAberto(false);
+      aoSalvar();
+    }
+  }
+
+  return (
+    <Modal open={aberto} onOpenChange={setAberto}>
+      <ModalGatilho asChild>
+        <Botao variante="contorno" disabled={nichos.length === 0 || !iaDisponivel}>
+          <Sprout />
+          Semear com IA
+        </Botao>
+      </ModalGatilho>
+      <ModalConteudo
+        titulo="Semear swipe file"
+        descricao="Para nicho novo, sem virais decompostos ainda. A IA propõe mecanismos de gancho a partir da persona do nicho."
+      >
+        <form onSubmit={enviar} className="space-y-3">
+          <div className="rounded-md border border-alerta/40 bg-alerta/10 p-3 text-xs text-alerta">
+            O que sai daqui é <strong>hipótese</strong>, não viral comprovado — fica marcado como
+            tal no card. Serve para destravar a produção: você publica, mede, e o relatório semanal
+            diz quais se sustentam. Os que vencerem viram template de verdade pelo botão
+            &ldquo;promover a template&rdquo; em Analytics.
+          </div>
+          <Campo rotulo="Nicho" erro={campos.nichoId} htmlFor="s-nicho">
+            <Selecao id="s-nicho" name="nichoId" required defaultValue={nichoPadrao ?? ""}>
+              <option value="" disabled>
+                Selecione…
+              </option>
+              {nichos.map((n) => (
+                <option key={n.id} value={n.id}>
+                  {n.nome}
+                  {n.subNicho ? ` · ${n.subNicho}` : ""}
+                </option>
+              ))}
+            </Selecao>
+          </Campo>
+          <Campo
+            rotulo="Quantos padrões"
+            erro={campos.quantidade}
+            htmlFor="s-qtd"
+            dica="A geração de roteiro exige 3 padrões distintos. 4 dá folga para a rotação."
+          >
+            <Input id="s-qtd" name="quantidade" type="number" min={3} max={6} defaultValue={4} />
+          </Campo>
+          <div className="flex justify-end gap-2 pt-1">
+            <Botao type="button" variante="fantasma" onClick={() => setAberto(false)}>
+              Cancelar
+            </Botao>
+            <Botao type="submit" variante="primario" disabled={carregando}>
+              {carregando ? "Gerando…" : "Semear"}
+            </Botao>
+          </div>
+        </form>
+      </ModalConteudo>
+    </Modal>
   );
 }

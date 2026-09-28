@@ -25,6 +25,21 @@
  */
 export const PADRAO_NAO_CLASSIFICADO = "sem padrão identificado";
 
+/**
+ * Marca de origem dos templates gerados por IA na partida a frio.
+ *
+ * Fica no campo `fonte` — que nos templates decompostos guarda o link do Reel
+ * original. A distinção é o ponto: um template vindo de viral real carrega
+ * evidência de que o mecanismo funcionou com público; uma hipótese carrega
+ * apenas uma aposta. Tratar os dois como iguais na interface seria apagar
+ * exatamente a diferença que o sistema existe para medir.
+ */
+export const FONTE_HIPOTESE = "hipótese gerada por IA";
+
+export function ehHipotese(fonte: string): boolean {
+  return fonte === FONTE_HIPOTESE;
+}
+
 /** Remove aspas e pontuação de borda — "contraste." e contraste são o mesmo rótulo. */
 function semBordas(s: string): string {
   return s.replace(/^["'`\s]+|["'`.:;,\s]+$/g, "");

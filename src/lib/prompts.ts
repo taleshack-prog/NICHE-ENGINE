@@ -351,3 +351,93 @@ SAÍDA:
 
 AGORA ANALISE AS MÉTRICAS:
 {{metricas}}`;
+
+// ─────────────────────────────────────────────
+// 7.5 — SEMEADURA DO SWIPE FILE (partida a frio)
+// ─────────────────────────────────────────────
+
+export const semearSwipeSchema = z.object({
+  templates: z
+    .array(
+      z.object({
+        padrao: z
+          .string()
+          .min(2)
+          .refine((s) => contarPalavras(s) <= 4, {
+            message: "padrao deve ter no máximo 4 palavras",
+          }),
+        gancho: z.object({
+          tipo: z.enum(CATEGORIAS_GANCHO),
+          texto: z.string().min(10).max(300),
+        }),
+        mecanismoRetencao: z.string().min(15),
+        loop: z.string().min(10),
+        cta: z.string().min(5),
+      }),
+    )
+    .min(3)
+    .max(6),
+});
+export type SwipeSemeado = z.infer<typeof semearSwipeSchema>;
+
+/**
+ * Resolve a PARTIDA A FRIO: nicho novo não tem swipe file, e sem 3 padrões
+ * distintos a geração de roteiro se recusa a rodar.
+ *
+ * O que sai daqui é HIPÓTESE, não viral comprovado — e é gravado marcado como
+ * tal. A validação vem do loop que já existe: produzir, medir, e o relatório
+ * semanal julgar. Em poucas semanas o swipe file passa a ser feito dos posts
+ * vencedores do próprio usuário, que é o que a spec sempre quis dizer com
+ * "todo post vencedor volta ao swipe file".
+ */
+export const semearSwipeFilePrompt = `Você é estrategista de conteúdo para páginas de nicho no Instagram.
+Um nicho NOVO não tem swipe file, e sem padrões catalogados a produção não começa.
+Sua tarefa é propor os primeiros mecanismos de gancho para este nicho.
+
+O QUE VOCÊ ESTÁ PRODUZINDO: hipóteses de mecanismo, não transcrições de vídeos
+reais. Não invente métricas, não finja que algo viralizou, não cite contas ou
+criadores. Cada item é uma aposta estrutural que será testada com dados reais.
+
+REGRAS:
+1. Cada template deve ser um MECANISMO DIFERENTE dos outros. Três variações do
+   mesmo mecanismo com temas diferentes contam como um só e não servem: a
+   geração de roteiro exige padrões distintos justamente para comparar.
+2. NÃO repita nenhum dos PADRÕES JÁ CATALOGADOS listados abaixo. Eles já existem
+   no sistema; o valor aqui é ampliar o vocabulário, não duplicá-lo.
+3. O padrão é o rótulo pelo qual a performance será comparada: 2 a 4 palavras,
+   minúsculas, concretas e OPERACIONAIS — alguém deve conseguir escrever um
+   roteiro só de ler o rótulo. Proibido rótulo abstrato que descreve o efeito
+   no espectador ("jornada emocional", "revelação profunda") em vez do mecanismo.
+4. O gancho é um EXEMPLO escrito na voz do nicho, falando com a dor da persona.
+   Máximo 3 segundos de fala. Classifique o tipo em:
+   pergunta | negacao | numero | story | contraste.
+5. O CTA é salvar ou compartilhar. Nunca "comente X": comentário genérico atrai
+   audiência fria de baixa qualidade.
+6. Ancore na dor REAL da persona informada. Gancho que serviria a qualquer nicho
+   não serve a nenhum.
+
+PADRÕES JÁ CATALOGADOS (não repita):
+{{padroesExistentes}}
+
+SAÍDA: APENAS JSON válido, sem markdown:
+{"templates":[{"padrao":"...","gancho":{"tipo":"...","texto":"..."},"mecanismoRetencao":"...","loop":"...","cta":"..."}]}
+
+EXEMPLO (nicho deliberadamente distante — copie a ESTRUTURA, nunca as palavras):
+ENTRADA:
+nicho: "corrida de rua"
+sub-nicho: "primeiros 5 km para sedentários"
+persona: "pessoa de 30-45 anos, sedentária há anos, já tentou começar duas vezes e parou na segunda semana por dor no joelho"
+quantidade: 3
+
+SAÍDA:
+{"templates":[
+{"padrao":"erro de execução","gancho":{"tipo":"negacao","texto":"Seu joelho não dói porque você corre. Dói porque você corre rápido demais pro seu preparo."},"mecanismoRetencao":"reatribuição de causa: o espectador chega com um culpado (a corrida) e é obrigado a ouvir o verdadeiro para saber se pode voltar","loop":"a dor que fez você parar é a prova de que dava pra continuar, só que devagar","cta":"salvar para reler antes do próximo treino"},
+{"padrao":"comparação de esforço","gancho":{"tipo":"contraste","texto":"Quem corre 5 km hoje treinou menos que você imagina. Treinou por mais tempo."},"mecanismoRetencao":"separa duas variáveis que o iniciante confunde — intensidade e constância — e adia qual das duas importa","loop":"o tempo que você acha que não tem é exatamente o que separa vocês dois","cta":"compartilhar com quem parou na segunda semana"},
+{"padrao":"regra única","gancho":{"tipo":"numero","texto":"Uma regra só nas primeiras quatro semanas: terminar o treino conseguindo falar."},"mecanismoRetencao":"promessa de simplificação radical contra o excesso de planilhas e métricas que trava o iniciante","loop":"conseguir falar no fim é o que garante que vai ter um próximo","cta":"salvar e usar como único critério até completar quatro semanas"}
+]}
+
+AGORA GERE PARA:
+nicho: {{nicho}}
+sub-nicho: {{subNicho}}
+persona: {{persona}}
+quantidade: {{quantidade}}`;

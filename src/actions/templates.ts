@@ -8,11 +8,19 @@ import { CATEGORIAS_GANCHO } from "@/lib/domain";
 import { gravarEstrutura, lerEstrutura } from "@/lib/json-fields";
 import {
   canonizarPadrao,
+  chavePadrao,
+  FONTE_HIPOTESE,
   listaParaPrompt,
   PADRAO_NAO_CLASSIFICADO,
   type PadraoCatalogado,
 } from "@/lib/padroes";
-import { decomposeViralPrompt, decomposeViralSchema, interpolar } from "@/lib/prompts";
+import {
+  decomposeViralPrompt,
+  decomposeViralSchema,
+  interpolar,
+  semearSwipeFilePrompt,
+  semearSwipeSchema,
+} from "@/lib/prompts";
 import { truncar } from "@/lib/utils";
 import { acao, idSchema, type ActionResult } from "./_shared";
 
@@ -237,4 +245,106 @@ async function registrarGancho(texto: string, categoria: string): Promise<void> 
     return;
   }
   await prisma.gancho.create({ data: { texto, categoria: cat, usos: 1 } });
+}
+
+// ─────────────────────────────────────────────
+// Semeadura do swipe file (partida a frio)
+// ─────────────────────────────────────────────
+
+const semearSchema = z.object({
+  nichoId: idSchema,
+  quantidade: z.coerce.number().int().min(3).max(6).default(4),
+});
+
+/**
+ * Gera os primeiros templates de um nicho sem swipe file.
+ *
+ * POR QUE ISTO EXISTE: a geração de roteiro exige 3 padrões distintos no nicho.
+ * Nicho novo tem zero, então a produção não começa — e a única saída era
+ * transcrever virais à mão, um por um. A API do Instagram não resolve isso:
+ * a busca por hashtag devolve só as últimas 24h, sem contagem de views e sem
+ * transcrição, então não dá nem para identificar o que viralizou.
+ *
+ * O que sai daqui é HIPÓTESE e nasce marcada como tal (`fonte`). A validação
+ * vem do loop que já existe: produzir, medir, relatório semanal julgar, e
+ * `promoverPostATemplate` transformar o vencedor em template com evidência.
+ */
+export async function semearSwipeFile(
+  entrada: unknown,
+): Promise<ActionResult<{ criados: number; padroes: string[] }>> {
+  return acao(semearSchema, entrada, async (d) => {
+    if (!iaDisponivel()) {
+      throw new Error(
+        "ANTHROPIC_API_KEY não configurada. A semeadura depende da IA — sem ela, cadastre templates manualmente.",
+      );
+    }
+
+    const nicho = await prisma.nicho.findUniqueOrThrow({
+      where: { id: d.nichoId },
+      select: { id: true, nome: true, subNicho: true, persona: true },
+    });
+
+    if (!nicho.persona?.trim()) {
+      throw new Error(
+        `O nicho "${nicho.nome}" não tem persona definida. Sem ela a IA gera gancho genérico que serviria a qualquer nicho — edite o nicho em /nichos antes de semear.`,
+      );
+    }
+
+    const catalogados = await padroesCatalogados();
+
+    const prompt = interpolar(semearSwipeFilePrompt, {
+      nicho: nicho.nome,
+      subNicho: nicho.subNicho ?? "(não definido)",
+      persona: nicho.persona,
+      quantidade: String(d.quantidade),
+      padroesExistentes: listaParaPrompt(catalogados),
+    });
+
+    const r = await callClaudeStructured(prompt, semearSwipeSchema, {
+      tarefa: "decomposicao",
+      maxTokens: 4096,
+    });
+
+    // Canoniza contra o catálogo E contra o próprio lote: a IA pode devolver
+    // dois rótulos que normalizam para o mesmo, e aí o "3 padrões distintos"
+    // vira 2 sem ninguém perceber até a geração de roteiro recusar.
+    const nomes = catalogados.map((c) => c.padrao);
+    const vistos = new Set(nomes.map(chavePadrao));
+    const criados: string[] = [];
+
+    for (const t of r.templates) {
+      const padrao = canonizarPadrao(t.padrao, nomes);
+      if (vistos.has(chavePadrao(padrao))) continue;
+      vistos.add(chavePadrao(padrao));
+
+      await prisma.templateViral.create({
+        data: {
+          nichoId: nicho.id,
+          fonte: FONTE_HIPOTESE,
+          transcricao: null,
+          gancho: t.gancho.texto,
+          padrao,
+          performance: null,
+          estrutura: gravarEstrutura({
+            hook: t.gancho.texto,
+            retention: t.mecanismoRetencao,
+            loop: t.loop,
+            cta: t.cta,
+          }),
+        },
+      });
+
+      await registrarGancho(t.gancho.texto, t.gancho.tipo);
+      criados.push(padrao);
+    }
+
+    if (criados.length === 0) {
+      throw new Error(
+        "A IA só devolveu padrões que já existem no catálogo. Tente de novo ou cadastre um template manualmente.",
+      );
+    }
+
+    revalidatePath("/swipe");
+    return { criados: criados.length, padroes: criados };
+  });
 }
