@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Copy, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { Copy, Pencil, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   createNicho,
@@ -153,6 +153,7 @@ export function TabelaNichos({ nichos }: { nichos: NichoLinha[] }) {
                   </TD>
                   <TD>
                     <div className="flex items-center justify-end gap-1">
+                      <FormularioNicho nicho={n} aoSalvar={() => router.refresh()} />
                       <Botao
                         variante="fantasma"
                         tamanho="icone"
@@ -187,13 +188,31 @@ export function TabelaNichos({ nichos }: { nichos: NichoLinha[] }) {
   );
 }
 
-function FormularioNicho({ aoSalvar }: { aoSalvar: () => void }) {
+/**
+ * Cria OU edita um nicho — o mesmo formulário, porque os campos são os mesmos.
+ *
+ * A tela só tinha criação: para corrigir uma persona mal escrita ou uma nota de
+ * concorrência otimista, a única saída era excluir e recriar. Com cascade no
+ * schema, excluir um nicho leva junto templates e posts — ou seja, o caminho
+ * disponível para consertar um TEXTO destruía o histórico.
+ */
+function FormularioNicho({
+  aoSalvar,
+  nicho,
+}: {
+  aoSalvar: () => void;
+  nicho?: NichoLinha;
+}) {
   const [aberto, setAberto] = React.useState(false);
   const { carregando, campos, executar } = useAcao();
+  const editando = nicho !== undefined;
 
   async function enviar(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
+    // Campo vazio vira undefined, que o updateNicho interpreta como "mantém o
+    // atual". Limpar um campo não é possível por aqui de propósito: apagar
+    // persona sem querer é mais provável que querer apagá-la.
     const entrada = {
       nome: fd.get("nome"),
       subNicho: fd.get("subNicho") || undefined,
@@ -202,7 +221,11 @@ function FormularioNicho({ aoSalvar }: { aoSalvar: () => void }) {
       concorrencia: fd.get("concorrencia") || undefined,
       persona: fd.get("persona") || undefined,
     };
-    const r = await executar(() => createNicho(entrada), { sucesso: "Nicho criado." });
+    const r = editando
+      ? await executar(() => updateNicho({ id: nicho.id, ...entrada }), {
+          sucesso: "Nicho atualizado — score recalculado.",
+        })
+      : await executar(() => createNicho(entrada), { sucesso: "Nicho criado." });
     if (r) {
       setAberto(false);
       aoSalvar();
@@ -212,31 +235,69 @@ function FormularioNicho({ aoSalvar }: { aoSalvar: () => void }) {
   return (
     <Modal open={aberto} onOpenChange={setAberto}>
       <ModalGatilho asChild>
-        <Botao variante="primario">
-          <Plus />
-          Novo nicho
-        </Botao>
+        {editando ? (
+          <Botao variante="fantasma" tamanho="icone" title={`Editar ${nicho.nome}`}>
+            <Pencil />
+          </Botao>
+        ) : (
+          <Botao variante="primario">
+            <Plus />
+            Novo nicho
+          </Botao>
+        )}
       </ModalGatilho>
       <ModalConteudo
-        titulo="Novo nicho candidato"
-        descricao="Demanda e concorrência de 1 a 10. Pode deixar em branco e preencher depois com a análise da IA."
+        titulo={editando ? `Editar ${nicho.nome}` : "Novo nicho candidato"}
+        descricao="Demanda e concorrência de 1 a 10. Alterar qualquer um dos três insumos recalcula o score na hora."
       >
         <form onSubmit={enviar} className="space-y-3">
           <Campo rotulo="Nome" erro={campos.nome} htmlFor="nome">
-            <Input id="nome" name="nome" required placeholder="Finanças e criptomoedas" />
+            <Input
+              id="nome"
+              name="nome"
+              required
+              defaultValue={nicho?.nome ?? ""}
+              placeholder="Finanças e criptomoedas"
+            />
           </Campo>
           <Campo rotulo="Sub-nicho" erro={campos.subNicho} htmlFor="subNicho">
-            <Input id="subNicho" name="subNicho" placeholder="erros de iniciante em cripto" />
+            <Input
+              id="subNicho"
+              name="subNicho"
+              defaultValue={nicho?.subNicho ?? ""}
+              placeholder="erros de iniciante em cripto"
+            />
           </Campo>
           <div className="grid grid-cols-3 gap-3">
             <Campo rotulo="Demanda (1-10)" erro={campos.demandaPerene} htmlFor="demandaPerene">
-              <Input id="demandaPerene" name="demandaPerene" type="number" min={1} max={10} />
+              <Input
+                id="demandaPerene"
+                name="demandaPerene"
+                type="number"
+                min={1}
+                max={10}
+                defaultValue={nicho?.demandaPerene ?? ""}
+              />
             </Campo>
             <Campo rotulo="Concorrência (1-10)" erro={campos.concorrencia} htmlFor="concorrencia">
-              <Input id="concorrencia" name="concorrencia" type="number" min={1} max={10} />
+              <Input
+                id="concorrencia"
+                name="concorrencia"
+                type="number"
+                min={1}
+                max={10}
+                defaultValue={nicho?.concorrencia ?? ""}
+              />
             </Campo>
             <Campo rotulo="CPM (USD)" erro={campos.cpmEstimado} htmlFor="cpmEstimado">
-              <Input id="cpmEstimado" name="cpmEstimado" type="number" step="0.1" min={0} />
+              <Input
+                id="cpmEstimado"
+                name="cpmEstimado"
+                type="number"
+                step="0.1"
+                min={0}
+                defaultValue={nicho?.cpmEstimado ?? ""}
+              />
             </Campo>
           </div>
           <Campo
@@ -248,6 +309,7 @@ function FormularioNicho({ aoSalvar }: { aoSalvar: () => void }) {
             <Input
               id="persona"
               name="persona"
+              defaultValue={nicho?.persona ?? ""}
               placeholder="homem, 25-40, investe há pouco, medo de perder dinheiro"
             />
           </Campo>
