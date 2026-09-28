@@ -441,3 +441,116 @@ nicho: {{nicho}}
 sub-nicho: {{subNicho}}
 persona: {{persona}}
 quantidade: {{quantidade}}`;
+
+// ─────────────────────────────────────────────
+// 7.6 — ROTEIRO → SLIDES DO CARROSSEL
+// ─────────────────────────────────────────────
+
+/**
+ * POR QUE ISTO EXISTE: o roteiro nasce como texto corrido para narração. Num
+ * carrossel não existe narração — o texto na tela É o conteúdo. Sem esta etapa,
+ * o post sai com texto no primeiro slide e imagem decorativa no resto, que é
+ * uma capa com anexos: ninguém desliza, ninguém salva.
+ *
+ * `direcaoVisual` é o campo que mais importa depois do texto. Gerar cada imagem
+ * a partir do seu próprio prompt, sem direção comum, devolveu três pessoas
+ * diferentes em três cenários diferentes no mesmo post. Uma frase de estilo
+ * repetida em todos os prompts é o que faz os slides parecerem do mesmo autor.
+ */
+export const gerarSlidesSchema = z
+  .object({
+    direcaoVisual: z.string().min(20).max(400),
+    slides: z
+      .array(
+        z.object({
+          ordem: z.number().int().min(1).max(10),
+          papel: z.enum(["capa", "conteudo", "cta"]),
+          texto: z
+            .string()
+            .min(2)
+            .refine((s) => contarPalavras(s) <= 10, {
+              message: "texto do slide deve ter no máximo 10 palavras",
+            }),
+          promptVisual: z.string().min(15).max(400),
+        }),
+      )
+      .min(5)
+      .max(8),
+  })
+  .refine((d) => d.slides.every((s, i) => s.ordem === i + 1), {
+    message: "os slides devem vir numerados de 1 a N, em ordem",
+  })
+  .refine((d) => d.slides[0]?.papel === "capa", {
+    message: "o slide 1 deve ter papel 'capa'",
+  })
+  .refine((d) => d.slides[d.slides.length - 1]?.papel === "cta", {
+    message: "o último slide deve ter papel 'cta'",
+  })
+  .refine((d) => d.slides.filter((s) => s.papel === "capa").length === 1, {
+    message: "só pode haver um slide de capa",
+  })
+  .refine((d) => contarPalavras(d.slides[0]?.texto ?? "") <= 6, {
+    message: "o texto da capa deve ter no máximo 6 palavras (legível em thumbnail)",
+  });
+export type SlidesGerados = z.infer<typeof gerarSlidesSchema>;
+export type SlideCarrossel = SlidesGerados["slides"][number];
+
+export const gerarSlidesPrompt = `Você é designer de carrosséis para páginas de nicho no Instagram.
+Recebe um roteiro escrito para narração e o converte em slides onde o TEXTO NA
+TELA carrega o conteúdo — não há voz.
+
+REGRAS OBRIGATÓRIAS:
+1. ENTRE 5 E 8 SLIDES, numerados de 1 a N na ordem de leitura.
+   - slide 1: papel "capa" — o gancho, no máximo 6 palavras, caixa alta implícita.
+   - slides do meio: papel "conteudo" — UMA ideia por slide. Máximo 10 palavras.
+   - último slide: papel "cta" — pede salvar ou compartilhar. Máximo 10 palavras.
+     NUNCA peça comentário ("comenta X"): comentário genérico atrai audiência
+     fria e o algoritmo lê engajamento raso.
+2. UMA IDEIA POR SLIDE. Se a frase tem duas afirmações, são dois slides. Texto
+   que não cabe em 10 palavras não cabe na tela de um celular a 30 cm.
+3. O SLIDE 2 NÃO PODE REPETIR A CAPA com outras palavras. Ele avança: entrega a
+   primeira informação concreta. Repetição no slide 2 é onde o usuário sai.
+4. PROGRESSÃO: cada slide só faz sentido depois do anterior. Se os slides do
+   meio podem ser embaralhados sem perda, o carrossel não tem progressão e você
+   escreveu uma lista solta — reescreva.
+5. direcaoVisual: UMA frase EM INGLÊS descrevendo o estilo visual comum a TODOS
+   os slides (paleta, iluminação, tipo de cena, material). É o que faz o post
+   parecer um post e não três imagens de bancos diferentes.
+6. promptVisual de cada slide: EM INGLÊS, um OBJETO ou CENA CONCRETA que
+   ilustre aquele slide específico.
+   - PROIBIDO: pessoas, rostos, mãos, multidões, texto, letras, números, logos,
+     interface de aplicativo. Rosto genérico é a estética que denuncia
+     conteúdo automático à primeira olhada; e qualquer letra que o gerador
+     inventar vai aparecer por baixo do texto de verdade.
+   - Deixe o terço INFERIOR da cena limpo: é onde o texto entra.
+7. O EXEMPLO ABAIXO ENSINA FORMATO, NÃO CONTEÚDO. É de outro nicho de
+   propósito. Se o seu resultado mencionar bicicleta, corrente ou pedal,
+   você copiou em vez de gerar.
+
+SAÍDA: APENAS JSON válido:
+{"direcaoVisual":"...","slides":[{"ordem":1,"papel":"capa","texto":"...","promptVisual":"..."}]}
+
+EXEMPLO:
+ENTRADA:
+roteiro: "Sua corrente não arrebentou do nada. Ela avisou por semanas. Corrente
+gasta estica: some meio elo a cada mil quilômetros. Quando estica demais, come a
+coroa junto. Trocar corrente custa uma fração de trocar transmissão inteira. O
+medidor de desgaste custa o preço de um lanche e mede em dez segundos."
+nicho: "manutenção de bicicleta"
+persona: "homem, 30-50, pedala no fim de semana, leva na oficina por não saber"
+
+SAÍDA:
+{"direcaoVisual":"Workshop still life, warm tungsten light from one side, deep shadows, oiled metal and worn wood textures, muted amber and steel-blue palette, shallow depth of field, clean empty surface across the bottom third",
+"slides":[
+{"ordem":1,"papel":"capa","texto":"Ela avisou antes de arrebentar","promptVisual":"A snapped steel bicycle chain lying on a dark workbench, single link torn open, warm side light raking across the metal, empty wood surface below"},
+{"ordem":2,"papel":"conteudo","texto":"Corrente gasta estica meio elo por mil quilômetros","promptVisual":"Extreme close-up of a chain stretched taut against a steel ruler on a workbench, shallow focus on the pins, empty surface below"},
+{"ordem":3,"papel":"conteudo","texto":"Esticada demais, ela come a coroa junto","promptVisual":"A worn sprocket with hooked shark-fin teeth resting on oiled cloth, warm rim light, dark empty space beneath"},
+{"ordem":4,"papel":"conteudo","texto":"Transmissão inteira custa muitas correntes","promptVisual":"Two parts side by side on dark wood: a small coiled chain and a large cassette, dramatic side lighting, clean empty foreground"},
+{"ordem":5,"papel":"conteudo","texto":"O medidor resolve em dez segundos","promptVisual":"A small metal chain wear gauge seated into a chain on a workbench, macro focus, warm light, empty surface across the bottom"},
+{"ordem":6,"papel":"cta","texto":"Salva para conferir antes do próximo pedal","promptVisual":"A clean workbench at dusk with tools hung in a row on the wall, warm lamp glow, wide empty wooden surface in the foreground"}
+]}
+
+AGORA GERE PARA:
+roteiro: {{roteiro}}
+nicho: {{nicho}}
+persona: {{persona}}`;

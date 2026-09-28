@@ -2,11 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { aplicarCapa, formatoValido, renderizarCapa } from "@/lib/capa";
+import { aplicarCapa, formatoValido, renderizarCapa, renderizarSlide } from "@/lib/capa";
+import { callClaudeStructured, iaDisponivel } from "@/lib/ai";
 import { prisma } from "@/lib/db";
 import { TIPOS_MIDIA } from "@/lib/domain";
 import { falDisponivel, gerarImagens, gerarVideo, promptVisualDeRoteiro } from "@/lib/fal";
 import { gravarMidia, lerMidia, type MidiaItem } from "@/lib/json-fields";
+import { gerarSlidesPrompt, gerarSlidesSchema, interpolar } from "@/lib/prompts";
 import { acao, idSchema, type ActionResult } from "./_shared";
 
 /**
@@ -68,6 +70,119 @@ export async function gerarCapa(entrada: unknown): Promise<ActionResult<{ url: s
 
     revalidatePath("/producao");
     return { url: capa.url };
+  });
+}
+
+/**
+ * Repetida em todo prompt de imagem. O modelo de imagem não vê as regras do
+ * prompt de texto: sem isto, volta a desenhar rostos e a inventar letras.
+ */
+const RESTRICOES_VISUAIS =
+  "No people, no faces, no hands. No text, no letters, no numbers, no logos, no watermarks. " +
+  "Clean empty negative space across the bottom third. Photographic realism, no illustration.";
+
+/**
+ * Carrossel completo a partir do roteiro: texto em TODOS os slides.
+ *
+ * POR QUE EXISTE: o roteiro nasce para narração e ficava no banco como texto
+ * corrido. O post saía com uma capa escrita e duas imagens decorativas — uma
+ * capa com anexos. Carrossel que retém tem uma ideia por tela, progressão entre
+ * elas e um pedido no fim; nada disso acontece sem alguém quebrar o roteiro.
+ *
+ * A IA devolve também uma `direcaoVisual` única aplicada a todos os prompts de
+ * imagem. Sem ela, cada slide saía de um banco de imagens diferente — o defeito
+ * mais visível do primeiro carrossel real que este sistema produziu.
+ */
+export async function gerarCarrossel(
+  entrada: unknown,
+): Promise<ActionResult<{ slides: number; custoImagens: number }>> {
+  return acao(z.object({ postId: idSchema }), entrada, async (d) => {
+    if (!iaDisponivel()) throw new Error("ANTHROPIC_API_KEY não configurada (Fase 2).");
+    if (!falDisponivel()) throw new Error("FAL_KEY não configurada (Fase 3).");
+
+    const post = await prisma.post.findUniqueOrThrow({
+      where: { id: d.postId },
+      include: { nicho: { select: { nome: true, subNicho: true, persona: true } } },
+    });
+
+    if (!post.roteiro?.trim()) {
+      throw new Error(
+        "Gere ou escreva o roteiro antes — os slides são a quebra dele, não um texto novo.",
+      );
+    }
+    if (post.formato === "reel") {
+      throw new Error(
+        "Este post é Reel. Mude o formato para Carrossel no topo do editor e salve antes de gerar os slides.",
+      );
+    }
+
+    const prompt = interpolar(gerarSlidesPrompt, {
+      roteiro: post.roteiro,
+      nicho: [post.nicho.nome, post.nicho.subNicho].filter(Boolean).join(" / "),
+      persona: post.nicho.persona ?? "(persona não definida para este nicho)",
+    });
+
+    const plano = await callClaudeStructured(prompt, gerarSlidesSchema, {
+      tarefa: "roteiro",
+      maxTokens: 4096,
+    });
+
+    const formato = formatoValido(post.formato);
+    const total = plano.slides.length;
+
+    // Em paralelo porque são chamadas independentes: em série, 6 imagens
+    // deixariam a action pendurada por mais de um minuto.
+    const bases = await Promise.all(
+      plano.slides.map((s) =>
+        gerarImagens(`${s.promptVisual}. ${plano.direcaoVisual}. ${RESTRICOES_VISUAIS}`, {
+          quantidade: 1,
+          aspecto: "portrait_4_3",
+        }),
+      ),
+    );
+
+    const lista: MidiaItem[] = [];
+    for (const [i, slide] of plano.slides.entries()) {
+      const base = bases[i]?.[0];
+      if (!base) throw new Error(`o fal.ai não devolveu imagem para o slide ${slide.ordem}.`);
+
+      // A capa respeita o coverText da copy quando ele existe: dois textos
+      // diferentes na mesma tela (um no slide, outro na legenda) se contradizem.
+      const texto =
+        slide.papel === "capa" ? (post.coverText?.trim() || slide.texto) : slide.texto;
+
+      const render = await renderizarSlide({
+        imagemUrl: base.url,
+        texto,
+        formato,
+        papel: slide.papel,
+        ordem: slide.ordem,
+        total,
+      });
+
+      lista.push({
+        tipo: "imagem",
+        url: render.url,
+        papel: slide.papel === "capa" ? "capa" : "slide",
+        ordem: slide.ordem,
+        texto,
+        origemUrl: base.url,
+        promptUsado: base.promptUsado,
+        criadoEm: new Date().toISOString(),
+      });
+    }
+
+    // Substitui a mídia anterior: misturar slides novos com imagens soltas da
+    // tentativa passada publicaria o carrossel fora de ordem.
+    const video = lerMidia(post.midiaPaths).filter((m) => m.tipo === "video");
+
+    await prisma.post.update({
+      where: { id: post.id },
+      data: { midiaPaths: gravarMidia([...lista, ...video]) },
+    });
+
+    revalidatePath("/producao");
+    return { slides: total, custoImagens: total };
   });
 }
 

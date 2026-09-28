@@ -49,9 +49,8 @@ const ACENTO = "#3ab4ef";
 const MARGEM_X = 0.08; // fração da largura
 const MARGEM_INFERIOR = 0.09; // fração da altura
 const LARGURA_TEXTO = 0.84; // fração da largura
-const ALTURA_MAX_BLOCO = 0.4; // fração da altura
-const LINHAS_MAX = 3;
 const ENTRELINHA = 1.06;
+// Altura máxima do bloco e número de linhas variam por papel — ver LAYOUT.
 
 let fonteRegistrada: string | null = null;
 
@@ -86,9 +85,10 @@ function garantirFonte(): string {
   );
 }
 
-/** MAIÚSCULAS e espaços colapsados. Capa de Reel não tem espaço para caixa mista. */
-function normalizar(texto: string): string {
-  return texto.replace(/\s+/g, " ").trim().toLocaleUpperCase("pt-BR");
+/** Espaços colapsados; caixa alta só onde o layout pede (ver LAYOUT). */
+function normalizar(texto: string, caixaAlta: boolean): string {
+  const limpo = texto.replace(/\s+/g, " ").trim();
+  return caixaAlta ? limpo.toLocaleUpperCase("pt-BR") : limpo;
 }
 
 /**
@@ -114,7 +114,52 @@ function quebrar(ctx: SKRSContext2D, palavras: string[], maxLargura: number): st
 }
 
 /**
- * Maior corpo de fonte em que o texto caiba em até LINHAS_MAX linhas.
+ * Papel do slide no carrossel. Não é só tamanho de fonte: cada papel tem um
+ * trabalho diferente na tela, e layout igual para os três faria o CTA parecer
+ * mais uma informação em vez de um pedido.
+ */
+export type PapelSlide = "capa" | "conteudo" | "cta";
+
+type Layout = {
+  /** Frações da altura da imagem — a capa de Reel é mais alta que a de feed. */
+  corpoMax: number;
+  corpoMin: number;
+  linhasMax: number;
+  blocoMax: number;
+  alinhamento: "left" | "center";
+  /** Capa é lida em miniatura: caixa alta. Frase de 10 palavras em caixa alta cansa. */
+  caixaAlta: boolean;
+};
+
+const LAYOUT: Record<PapelSlide, Layout> = {
+  capa: {
+    corpoMax: 0.15,
+    corpoMin: 0.032,
+    linhasMax: 3,
+    blocoMax: 0.4,
+    alinhamento: "left",
+    caixaAlta: true,
+  },
+  conteudo: {
+    corpoMax: 0.075,
+    corpoMin: 0.026,
+    linhasMax: 4,
+    blocoMax: 0.36,
+    alinhamento: "left",
+    caixaAlta: false,
+  },
+  cta: {
+    corpoMax: 0.095,
+    corpoMin: 0.03,
+    linhasMax: 3,
+    blocoMax: 0.4,
+    alinhamento: "center",
+    caixaAlta: false,
+  },
+};
+
+/**
+ * Maior corpo de fonte em que o texto caiba nas linhas permitidas.
  *
  * Busca de cima para baixo em vez de corpo fixo porque "SÓ 3" e "REDE PRIMEIRO,
  * CARTEIRA DEPOIS" são ambos coverText válidos: corpo fixo deixaria o primeiro
@@ -124,18 +169,19 @@ function ajustarCorpo(
   ctx: SKRSContext2D,
   texto: string,
   maxLargura: number,
-  maxAltura: number,
   alturaImagem: number,
+  layout: Layout,
 ): { linhas: string[]; corpo: number } {
   const palavras = texto.split(" ");
-  const maior = Math.round(alturaImagem * 0.15);
-  const menor = Math.round(alturaImagem * 0.032);
+  const maior = Math.round(alturaImagem * layout.corpoMax);
+  const menor = Math.round(alturaImagem * layout.corpoMin);
+  const maxAltura = alturaImagem * layout.blocoMax;
 
   for (let corpo = maior; corpo >= menor; corpo -= 2) {
     ctx.font = `${corpo}px "${FAMILIA}"`;
     const linhas = quebrar(ctx, palavras, maxLargura);
     if (!linhas) continue;
-    if (linhas.length <= LINHAS_MAX && linhas.length * corpo * ENTRELINHA <= maxAltura) {
+    if (linhas.length <= layout.linhasMax && linhas.length * corpo * ENTRELINHA <= maxAltura) {
       return { linhas, corpo };
     }
   }
@@ -155,7 +201,7 @@ function ajustarCorpo(
     }
   }
   if (atual) linhas.push(atual);
-  return { linhas: linhas.slice(0, LINHAS_MAX), corpo: menor };
+  return { linhas: linhas.slice(0, layout.linhasMax), corpo: menor };
 }
 
 /** Escurece a base para o texto branco ter contraste sobre qualquer imagem. */
@@ -196,25 +242,35 @@ export type CapaRenderizada = {
 };
 
 /**
- * Compõe a capa e grava em public/midia/capas.
+ * Compõe um slide e grava em public/midia/capas.
  *
- * O nome do arquivo é o hash das entradas (imagem + texto + formato): render
- * repetido com as mesmas entradas reaproveita o arquivo, e mudar o coverText
- * gera outro nome — o navegador não serve versão velha do cache.
+ * O nome do arquivo é o hash das entradas: render repetido com as mesmas
+ * entradas reaproveita o arquivo, e mudar o texto gera outro nome — o navegador
+ * não serve versão velha do cache.
  */
-export async function renderizarCapa(args: {
+export async function renderizarSlide(args: {
   imagemUrl: string;
   texto: string;
   formato: Formato;
+  papel?: PapelSlide;
+  /** Posição no carrossel, para o contador discreto. Omitir em post único. */
+  ordem?: number;
+  total?: number;
 }): Promise<CapaRenderizada> {
-  const texto = normalizar(args.texto);
-  if (!texto) throw new CapaError("coverText vazio — gere a copy ou escreva o texto de capa antes");
+  const papel = args.papel ?? "capa";
+  const layout = LAYOUT[papel];
+  const texto = normalizar(args.texto, layout.caixaAlta);
+  if (!texto) throw new CapaError("texto vazio — não há o que escrever no slide");
 
   garantirFonte();
 
   const { largura, altura } = DIMENSOES[args.formato];
   const hash = createHash("sha1")
-    .update(`${args.imagemUrl}\u0000${texto}\u0000${args.formato}\u0000v1`)
+    .update(
+      [args.imagemUrl, texto, args.formato, papel, args.ordem ?? 0, args.total ?? 0, "v2"].join(
+        "\u0000",
+      ),
+    )
     .digest("hex")
     .slice(0, 12);
 
@@ -237,23 +293,43 @@ export async function renderizarCapa(args: {
   ctx.drawImage(base, (largura - lDes) / 2, (altura - aDes) / 2, lDes, aDes);
 
   const maxLargura = largura * LARGURA_TEXTO;
-  const { linhas, corpo } = ajustarCorpo(ctx, texto, maxLargura, altura * ALTURA_MAX_BLOCO, altura);
-
+  const { linhas, corpo } = ajustarCorpo(ctx, texto, maxLargura, altura, layout);
   const alturaLinha = corpo * ENTRELINHA;
-  const baseY = altura - altura * MARGEM_INFERIOR;
+
+  if (papel === "cta") {
+    // O último slide é um pedido, não uma informação: escurece a imagem inteira
+    // para virar cartão. Deixá-lo igual aos do meio faz o CTA passar batido.
+    ctx.fillStyle = "rgba(6,8,14,0.62)";
+    ctx.fillRect(0, 0, largura, altura);
+  }
+
+  const centralizado = layout.alinhamento === "center";
+  const baseY = centralizado
+    ? altura / 2 + (linhas.length * alturaLinha) / 2
+    : altura - altura * MARGEM_INFERIOR;
   const topoBloco = baseY - linhas.length * alturaLinha;
 
-  veu(ctx, largura, altura, topoBloco);
+  if (papel !== "cta") veu(ctx, largura, altura, topoBloco);
 
-  // Barra de acento: âncora visual que dá identidade de página e separa o texto
-  // da imagem sem precisar de caixa opaca atrás da frase.
-  const x = largura * MARGEM_X;
+  const x = centralizado ? largura / 2 : largura * MARGEM_X;
+
+  // Âncora de acento: identidade de página sem caixa opaca atrás da frase.
+  // Barra horizontal acima do texto na capa e no CTA (peças "de abertura e
+  // fechamento"); filete vertical à esquerda nos slides de conteúdo, que é o
+  // que faz o meio do carrossel parecer uma sequência e não telas soltas.
   ctx.fillStyle = ACENTO;
-  ctx.fillRect(x, topoBloco - corpo * 0.5, Math.round(largura * 0.07), Math.max(5, corpo * 0.075));
+  if (papel === "conteudo") {
+    const l = Math.max(5, Math.round(corpo * 0.12));
+    ctx.fillRect(x - l * 3, topoBloco, l, linhas.length * alturaLinha - corpo * 0.18);
+  } else {
+    const l = Math.round(largura * 0.07);
+    const a = Math.max(5, corpo * 0.075);
+    ctx.fillRect(centralizado ? x - l / 2 : x, topoBloco - corpo * 0.5, l, a);
+  }
 
   ctx.font = `${corpo}px "${FAMILIA}"`;
   ctx.fillStyle = "#ffffff";
-  ctx.textAlign = "left";
+  ctx.textAlign = centralizado ? "center" : "left";
   ctx.textBaseline = "top";
   ctx.shadowColor = "rgba(0,0,0,0.5)";
   ctx.shadowBlur = Math.round(corpo * 0.22);
@@ -263,8 +339,28 @@ export async function renderizarCapa(args: {
     ctx.fillText(linha, x, topoBloco + i * alturaLinha);
   });
 
+  // Contador discreto: sinaliza que há mais slides. O Instagram mostra
+  // bolinhas, mas elas somem no vídeo de preview e em repost.
+  if (args.ordem && args.total && args.total > 1 && papel !== "cta") {
+    const c = Math.round(altura * 0.022);
+    ctx.font = `${c}px "${FAMILIA}"`;
+    ctx.fillStyle = "rgba(255,255,255,0.62)";
+    ctx.textAlign = "right";
+    ctx.shadowBlur = Math.round(c * 0.4);
+    ctx.fillText(`${args.ordem}/${args.total}`, largura - largura * MARGEM_X, altura * 0.05);
+  }
+
   await writeFile(arquivo, await canvas.encode("jpeg", 92));
   return { url, arquivo, largura, altura };
+}
+
+/** Atalho histórico: capa de post único. */
+export async function renderizarCapa(args: {
+  imagemUrl: string;
+  texto: string;
+  formato: Formato;
+}): Promise<CapaRenderizada> {
+  return renderizarSlide({ ...args, papel: "capa" });
 }
 
 export function formatoValido(f: string): Formato {

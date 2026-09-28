@@ -441,7 +441,7 @@ LIMIT 10;`,
 // midia_paths é TEXT com JSON (ver decisão 2 do schema): parse sempre funciona,
 // em SQLite e em PostgreSQL.
 const midia = typeof post.midia_paths === 'string' ? JSON.parse(post.midia_paths || '[]') : (post.midia_paths || []);
-const imagens = midia.filter(m => m.tipo === 'imagem');
+const imagens = midia.filter(m => m.tipo === 'imagem').sort((a, b) => (a.ordem || 99) - (b.ordem || 99));
 
 if (imagens.length < 2) throw new Error('Carrossel exige no mínimo 2 imagens: ' + post.titulo);
 if (imagens.length > 10) throw new Error('Carrossel aceita no máximo 10 imagens: ' + post.titulo);

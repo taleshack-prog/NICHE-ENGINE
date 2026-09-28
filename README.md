@@ -199,6 +199,25 @@ A ordem importa: custo e burocracia crescem da esquerda para a direita.
    "Publicar agora" recusa com a mensagem explicando; a capa continua sendo gerada e
    pode ser baixada pelo editor para postagem manual.
 
+### Carrossel — texto em todos os slides
+
+`gerarCarrossel` (botão **Carrossel** no editor) quebra o roteiro em 5 a 8 slides
+e devolve o post inteiro pronto: um clique, nenhuma etapa em editor externo.
+
+O roteiro nasce para narração — texto corrido. Num carrossel não há narração: o
+texto na tela **é** o conteúdo. Sem essa quebra o post saía com a capa escrita e
+o resto decorativo, que é uma capa com anexos.
+
+- **`direcaoVisual`**: a IA devolve uma frase de estilo aplicada a *todos* os
+  prompts de imagem. Sem ela cada slide saía de um banco de imagens diferente —
+  o defeito mais visível do primeiro carrossel real que o sistema produziu.
+- **Layout por papel:** capa (texto grande, caixa alta, barra de acento), conteúdo
+  (filete vertical, contador `n/N` no canto) e CTA (imagem escurecida, texto
+  centralizado — um pedido não pode parecer mais uma informação).
+- **Ordem** vai gravada em cada item e a publicação ordena por ela, no dashboard e
+  no Workflow B. Carrossel fora de ordem conta a história ao contrário.
+- **Custo:** uma imagem paga por slide. O botão avisa antes.
+
 ### Capa — o texto vai queimado na imagem
 
 O `coverText` que a IA gera **não é só um campo**: `src/lib/capa.ts` compõe a frase

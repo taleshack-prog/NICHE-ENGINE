@@ -15,11 +15,16 @@ export const midiaItemSchema = z.object({
   promptUsado: z.string().optional(),
   criadoEm: z.string().optional(),
   /**
-   * "capa" = imagem com o coverText já queimado. Só uma por post, e sempre na
-   * primeira posição: no carrossel é o slide que o feed mostra, no Reel é o
-   * frame de partida do Kling.
+   * "capa" = imagem com o texto de capa queimado. Só uma por post, e sempre na
+   * primeira posição: no carrossel é o slide que o feed mostra, no Reel vai
+   * como `cover_url` do container.
+   * "slide" = demais telas de um carrossel gerado, com texto próprio.
    */
-  papel: z.literal("capa").optional(),
+  papel: z.enum(["capa", "slide"]).optional(),
+  /** Posição no carrossel (1 = capa). Define a ordem de publicação. */
+  ordem: z.number().int().min(1).max(20).optional(),
+  /** Texto queimado nesta imagem — permite re-renderizar sem chamar a IA de novo. */
+  texto: z.string().max(300).optional(),
   /**
    * Imagem original que gerou a capa. Guardar isso é o que permite trocar o
    * coverText e renderizar de novo sem ter que pagar outra geração no fal.

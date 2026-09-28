@@ -5,6 +5,7 @@ import {
   CalendarClock,
   Download,
   Film,
+  GalleryHorizontalEnd,
   Image as ImageIcon,
   Send,
   Sparkles,
@@ -23,7 +24,13 @@ import {
   publicarPost,
   updatePost,
 } from "@/actions/posts";
-import { anexarMidiaUrl, gerarCapa, gerarMidia, removerMidia } from "@/actions/midia";
+import {
+  anexarMidiaUrl,
+  gerarCapa,
+  gerarCarrossel,
+  gerarMidia,
+  removerMidia,
+} from "@/actions/midia";
 import { Botao } from "@/components/ui/botao";
 import { AreaTexto, Campo, Input, Selecao } from "@/components/ui/campos";
 import { Selo } from "@/components/ui/selo";
@@ -82,6 +89,7 @@ export function EditorPost({
   const palavrasCover = contarPalavras(coverText);
   const temImagem = post.midiaLista.some((m) => m.tipo === "imagem");
   const capa = post.midiaLista.find((m) => m.papel === "capa");
+  const slides = post.midiaLista.filter((m) => m.papel === "capa" || m.papel === "slide").length;
 
   async function salvarCampos() {
     await salvar.executar(
@@ -159,6 +167,57 @@ export function EditorPost({
       sucesso: "Capa gerada — a imagem com texto é a primeira da lista.",
       aoConcluir: aoAtualizar,
     });
+  }
+
+  /** slug-do-titulo-01.jpg — nome ordenável, porque o hash do arquivo não é. */
+  function nomeArquivo(ordem: number): string {
+    const slug =
+      titulo
+        .slice(0, 40)
+        .replace(/[^\w\s-]/g, "")
+        .trim()
+        .replace(/\s+/g, "-")
+        .toLowerCase() || "post";
+    return `${slug}-${String(ordem).padStart(2, "0")}.jpg`;
+  }
+
+  /**
+   * Baixa os slides na ordem. Downloads em sequência com respiro entre eles:
+   * disparar seis cliques no mesmo tick faz o Chrome engolir todos menos o
+   * primeiro.
+   */
+  async function baixarTudo() {
+    const prontos = post.midiaLista
+      .filter((m) => m.papel)
+      .sort((a, b) => (a.ordem ?? 1) - (b.ordem ?? 1));
+    for (const m of prontos) {
+      const a = document.createElement("a");
+      a.href = m.url;
+      a.download = nomeArquivo(m.ordem ?? 1);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      await new Promise((r) => setTimeout(r, 350));
+    }
+    toast.success(`${prontos.length} imagens baixadas, numeradas na ordem.`);
+  }
+
+  /** Roteiro → 5-8 slides com texto próprio, num clique. */
+  async function carrossel() {
+    if (
+      !window.confirm(
+        "Gerar o carrossel inteiro? Isso substitui as imagens atuais e gera uma imagem por slide (5 a 8 chamadas pagas no fal.ai).",
+      )
+    ) {
+      return;
+    }
+    toast.info("Quebrando o roteiro em slides e gerando as imagens — leva ~1 min.");
+    const r = await midia.executar(() => gerarCarrossel({ postId: post.id }), {
+      aoConcluir: aoAtualizar,
+    });
+    if (r && typeof r === "object" && "slides" in r) {
+      toast.success(`Carrossel de ${(r as { slides: number }).slides} slides, todos com texto.`);
+    }
   }
 
   async function gerarVideoClique() {
@@ -437,6 +496,20 @@ export function EditorPost({
               </h3>
               <div className="flex gap-2">
                 <Botao
+                  variante="primario"
+                  tamanho="sm"
+                  onClick={carrossel}
+                  disabled={ocupado || !falDisponivel || !iaDisponivel || formato === "reel"}
+                  title={
+                    formato === "reel"
+                      ? "Mude o formato para Carrossel"
+                      : "Roteiro → slides, cada um com seu texto e sua imagem"
+                  }
+                >
+                  <GalleryHorizontalEnd />
+                  Carrossel
+                </Botao>
+                <Botao
                   variante="contorno"
                   tamanho="sm"
                   onClick={gerarImagem}
@@ -459,7 +532,18 @@ export function EditorPost({
               </div>
             </div>
 
-            {capa ? (
+            {slides > 1 ? (
+              <div className="flex items-center gap-2 rounded-md border border-acento/40 bg-acento/10 px-2 py-1.5">
+                <p className="flex-1 text-[11px] text-suave">
+                  Carrossel de {slides} slides, todos com texto. O número no canto de cada
+                  imagem é a ordem de publicação.
+                </p>
+                <Botao variante="secundario" tamanho="sm" onClick={baixarTudo} disabled={ocupado}>
+                  <Download />
+                  Baixar todos
+                </Botao>
+              </div>
+            ) : capa ? (
               <p className="rounded-md border border-acento/40 bg-acento/10 px-2 py-1.5 text-[11px] text-suave">
                 A primeira imagem já está com o texto de capa. Passe o mouse nela e use{" "}
                 <Download className="inline size-3 align-[-2px]" /> para baixar pronta.
@@ -484,21 +568,25 @@ export function EditorPost({
                     />
                     <span
                       className={`absolute left-1 top-1 rounded px-1 text-[9px] uppercase ${
-                        m.papel === "capa"
+                        m.papel
                           ? "bg-acento text-fundo font-semibold"
                           : "bg-black/70"
                       }`}
                     >
-                      {m.papel === "capa" ? "capa" : m.tipo}
+                      {m.papel === "capa"
+                        ? `capa 1/${slides}`
+                        : m.papel === "slide"
+                          ? `${m.ordem ?? "?"}/${slides}`
+                          : m.tipo}
                     </span>
                     <div className="absolute right-1 top-1 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                      {m.papel === "capa" ? (
+                      {m.papel ? (
                         <a
                           href={m.url}
-                          // Nome legível na pasta de downloads: "capa-...jpg"
-                          // vale mais que o hash do arquivo na hora de postar.
-                          download={`capa-${titulo.slice(0, 40).replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-").toLowerCase() || "post"}.jpg`}
-                          aria-label="Baixar capa pronta"
+                          // Nome legível e ordenável na pasta de downloads: o
+                          // hash do arquivo não diz qual slide vem primeiro.
+                          download={nomeArquivo(m.ordem ?? 1)}
+                          aria-label="Baixar imagem pronta"
                           title="Baixar a imagem pronta"
                           className="rounded bg-black/70 p-0.5 text-acento hover:text-texto"
                         >

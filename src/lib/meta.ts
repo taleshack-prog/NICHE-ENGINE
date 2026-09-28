@@ -141,7 +141,11 @@ export async function publicarNoInstagram(args: {
   let containerId: string;
 
   if (formato === "carrossel") {
-    const imagens = midia.filter((m) => m.tipo === "imagem");
+    // Ordem explícita quando existe: um carrossel fora de ordem conta a história
+    // ao contrário, e a ordem do array já foi mexida por edições de capa.
+    const imagens = midia
+      .filter((m) => m.tipo === "imagem")
+      .sort((a, b) => (a.ordem ?? 99) - (b.ordem ?? 99));
     if (imagens.length < 2) {
       throw new MetaError(`carrossel exige no mínimo 2 imagens (recebeu ${imagens.length})`);
     }
