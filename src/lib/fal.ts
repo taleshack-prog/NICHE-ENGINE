@@ -233,9 +233,11 @@ export async function gerarNarracao(
     {
       prompt: texto,
       voice: opts.voz ?? "pf_dora",
-      // 1.1 porque narração de Reel é mais rápida que fala natural; acima de
-      // 1.25 o Kokoro começa a comer sílabas em português.
-      speed: opts.velocidade ?? 1.1,
+      // 1.0. O palpite anterior era 1.1 "porque narração de Reel é mais rápida
+      // que fala natural" — e o resultado foi uma leitura afobada, sem pausa,
+      // que dá a impressão de que a frase não vai caber. Ritmo de Reel se
+      // ganha com frase curta e corte, não com a voz correndo.
+      speed: opts.velocidade ?? Number(process.env.REEL_VOZ_VELOCIDADE || "1.0"),
     },
     "narração",
   );

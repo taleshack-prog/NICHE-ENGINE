@@ -19,12 +19,20 @@ export type Bloco = { ordem: number; inicioMs: number; duracaoMs: number; texto:
  * as ideias.
  */
 export function textoNarravel(roteiro: string): string {
-  return roteiro
-    .split(/\n+/)
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .map((l) => (/[.!?…:]$/.test(l) ? l : `${l}.`))
-    .join(" ");
+  return (
+    roteiro
+      .split(/\n+/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+      // Toda linha termina em pontuação forte. Sem ponto final, o sintetizador
+      // emenda o fim de um bloco no começo do outro e a frase não fecha.
+      .map((l) => (/[.!?…]$/.test(l) ? l : `${l.replace(/[:,;]$/, "")}.`))
+      // Parágrafo, não espaço. Juntar os quatro blocos do roteiro com " "
+      // entregava um texto corrido ao Kokoro, que lê sem respiro entre gancho,
+      // corpo, loop e CTA — a narração soava como quem está sem tempo de
+      // terminar. A quebra dupla é o que vira pausa na fala.
+      .join("\n\n")
+  );
 }
 
 /**

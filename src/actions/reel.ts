@@ -311,6 +311,66 @@ export async function gerarReel(entrada: unknown): Promise<ActionResult<Resultad
   });
 }
 
+/**
+ * Gera só a narração, para ouvir antes de pagar os clipes.
+ *
+ * POR QUE EXISTE: voz e velocidade são gosto, não acerto técnico — eu errei a
+ * velocidade por palpite e o defeito só apareceu depois de oito clipes pagos.
+ * A narração custa uma fração de um clipe; testá-la isolada é a diferença
+ * entre ajustar por centavos e ajustar por US$ 3.
+ *
+ * Descarta cenas, clipes e vídeo final: voz nova tem tempos novos, e manter os
+ * clipes antigos deixaria imagem e fala fora de sincronia — silenciosamente,
+ * porque nada falharia.
+ */
+export async function previaNarracao(
+  entrada: unknown,
+): Promise<ActionResult<{ url: string; descartados: number }>> {
+  return acao(
+    z.object({
+      postId: idSchema,
+      voz: z.enum(VOZES_PT_BR).optional(),
+      velocidade: z.coerce.number().min(0.7).max(1.4).optional(),
+    }),
+    entrada,
+    async (d) => {
+      if (!falDisponivel()) throw new Error("FAL_KEY não configurada (Fase 3).");
+
+      const post = await prisma.post.findUniqueOrThrow({
+        where: { id: d.postId },
+        select: { id: true, roteiro: true, midiaPaths: true },
+      });
+      if (!post.roteiro?.trim()) throw new Error("Escreva ou gere o roteiro antes.");
+
+      const { url } = await gerarNarracao(textoNarravel(post.roteiro), {
+        voz: d.voz,
+        velocidade: d.velocidade,
+      });
+
+      const antes = lerMidia(post.midiaPaths);
+      const obsoletos = new Set(["narracao", "cena", "clipe", "final"]);
+      const lista: MidiaItem[] = [
+        ...antes.filter((m) => !obsoletos.has(m.papel ?? "")),
+        {
+          tipo: "audio",
+          url,
+          papel: "narracao",
+          texto: textoNarravel(post.roteiro).slice(0, 300),
+          criadoEm: new Date().toISOString(),
+        },
+      ];
+
+      await prisma.post.update({
+        where: { id: post.id },
+        data: { midiaPaths: gravarMidia(lista) },
+      });
+
+      revalidatePath("/producao");
+      return { url, descartados: antes.filter((m) => obsoletos.has(m.papel ?? "")).length };
+    },
+  );
+}
+
 const refazerLegendaSchema = z.object({
   postId: idSchema,
   corpo: z.coerce.number().int().min(18).max(120).optional(),

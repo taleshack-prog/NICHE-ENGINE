@@ -600,6 +600,15 @@ export const gerarCenasSchema = z
         z.object({
           ordem: z.number().int().min(1).max(20),
           escala: z.enum(ESCALAS),
+          /**
+           * O que DESTA fala a imagem mostra, em uma frase.
+           *
+           * Obriga o modelo a justificar a ligação antes de escolher a cena.
+           * Sem este campo, a regra de "traduza por metáfora" produziu imagens
+           * bonitas e sem relação nenhuma com o que estava sendo dito: nada
+           * no formato cobrava o vínculo, então ele não existia.
+           */
+          ligacao: z.string().min(10).max(160),
           promptVisual: z.string().min(15).max(400),
           movimento: z.string().min(5).max(200),
         }),
@@ -629,54 +638,53 @@ export const gerarCenasPrompt = `Você é diretor de fotografia de Reels faceles
 Recebe um roteiro JÁ NARRADO, quebrado em blocos com o tempo exato de cada um, e
 descreve a cena de b-roll que acompanha cada bloco.
 
+A REGRA ACIMA DE TODAS: quem assiste precisa reconhecer a cena como sendo
+AQUELA frase, sem explicação. Imagem bonita que não se liga à fala é pior que
+imagem óbvia: o espectador sente que o vídeo foi montado no automático.
+
 REGRAS OBRIGATÓRIAS:
-1. UMA CENA POR BLOCO, na mesma ordem, numeradas de 1 a N. Nem uma a mais, nem
-   uma a menos: cada cena vira um clipe que ocupa exatamente aquele tempo.
-2. A CENA ILUSTRA O QUE ESTÁ SENDO DITO NAQUELE BLOCO — não o tema geral do
-   vídeo. Cena genérica repetida em blocos diferentes destrói o corte: o
-   espectador vê a mesma imagem e entende que nada avançou.
-3. PROIBIDO O ÓBVIO DO NICHO. Para cada assunto existe um acervo de imagens que
-   todo mundo usa, e usá-lo é a definição de genérico. Se o nicho é dinheiro ou
-   tecnologia, estão BANIDOS: placa de circuito, chip, neon azul, grade
-   luminosa, holograma, moeda dourada, cofre, cadeado, gráfico de vela, tela de
-   corretora, foguete, touro, urso, figura encapuzada, globo com linhas. Se o
-   nicho for outro, o princípio é o mesmo: descarte a PRIMEIRA imagem que te
-   vier à cabeça e use a terceira.
-4. QUANDO O BLOCO FOR ABSTRATO, TRADUZA POR METÁFORA FÍSICA, não por ilustração
-   literal. "Escolher a rede errada" não é uma placa de circuito: é um desvio de
-   trilho na neblina, duas portas idênticas num corredor, um molho de chaves
-   parecidas. A metáfora precisa ser FILMÁVEL e do mundo real — objeto, lugar,
-   material, fenômeno físico.
-5. ESCALA: cada cena declara a sua ("macro", "detalhe", "medio", "amplo",
-   "zenital") e DUAS CENAS SEGUIDAS NÃO PODEM TER A MESMA. Oito planos médios de
-   objeto sobre mesa é um vídeo sem corte visual, por mais bonito que cada
-   quadro seja. Alterne: o que era macro vira amplo, o que era amplo vira
-   zenital.
-6. promptVisual EM INGLÊS: o OBJETO ou AMBIENTE concreto daquela cena, com
-   material, luz e superfície. Não repita a escala em palavras — ela entra
-   sozinha pelo campo "escala".
+1. UMA CENA POR BLOCO, na mesma ordem, numeradas de 1 a N. Cada cena vira um
+   clipe que ocupa exatamente aquele tempo.
+2. ligacao: escreva PRIMEIRO, em português, UMA frase dizendo o que daquela
+   fala a imagem mostra — citando uma palavra ou ideia que está no bloco. Se
+   você não conseguir escrever essa frase sem inventar, a cena está errada:
+   troque a cena, não a justificativa.
+3. PRIMEIRA ESCOLHA: o objeto, lugar ou material que a frase JÁ NOMEIA ou
+   pressupõe. "Reserva de emergência" tem cara de envelope de dinheiro guardado
+   numa gaveta; "taxa da corretora" tem cara de um extrato impresso. Só vá para
+   metáfora quando a frase não nomear nada filmável.
+4. METÁFORA SÓ SE PASSAR NO TESTE DE UM SEGUNDO: alguém que ouve a frase e vê
+   a imagem faria a ligação na hora? Se precisa de explicação, não passou.
+   Trilho na neblina para "escolher a rede" passa; folhas ao vento para a mesma
+   frase não passa, é só uma imagem bonita.
+5. EVITE O TRATAMENTO DE BANCO DE IMAGENS, não o assunto. Está BANIDO o visual
+   pronto: neon azul, grade luminosa, holograma, renderização 3D brilhante,
+   moeda dourada flutuando, foguete, touro, urso, figura encapuzada, globo com
+   linhas, gráfico de vela, cadeado desenhado. NÃO está banido filmar o objeto
+   real do assunto — um aparelho sobre a mesa, um papel impresso, uma tela
+   apagada, uma gaveta. Objeto real, luz real, sem brilho de propaganda.
+6. ESCALA: cada cena declara a sua ("macro", "detalhe", "medio", "amplo",
+   "zenital") e DUAS CENAS SEGUIDAS NÃO PODEM TER A MESMA. Oito planos médios
+   de objeto sobre mesa é um vídeo sem corte visual, por mais bonito que cada
+   quadro seja.
+7. promptVisual EM INGLÊS: o objeto ou ambiente daquela cena, com material, luz
+   e superfície. Não repita a escala em palavras — ela entra pelo campo próprio.
    - PROIBIDO: pessoas, rostos, mãos, multidões, texto, letras, números, logos,
      interface de aplicativo. Rosto genérico denuncia conteúdo automático, e
      letra inventada pelo gerador aparece por baixo da legenda.
    - Enquadramento VERTICAL. Deixe o terço inferior limpo: é onde a legenda entra.
-7. motivo: UM objeto ou lugar físico a que o vídeo VOLTA — o fio que costura as
-   cenas. Não é o estilo, é uma coisa ("a mesma bancada de concreto molhado",
-   "o mesmo corredor de armários de metal"). Sem um motivo, oito cenas
-   diferentes viram oito vídeos diferentes.
-8. direcaoVisual: UMA frase EM INGLÊS com paleta, luz, lente e material comuns a
-   todas as cenas.
-9. movimento EM INGLÊS: o movimento de câmera daquele clipe, curto e físico. NÃO
-   REPITA o mesmo movimento em cenas seguidas — oito "slow push-in" é uma
-   câmera dormindo. Alterne entre aproximar, afastar, deslizar lateralmente,
-   inclinar, girar devagar e ficar parado com algo se movendo dentro do quadro.
-   NUNCA peça corte ou troca de assunto dentro do clipe: o gerador anima um
-   plano só e pedir corte devolve deformação.
-10. O EXEMPLO ABAIXO ENSINA FORMATO E GRAU DE OUSADIA, NÃO CONTEÚDO. É de outro
+8. motivo: UM objeto ou lugar físico a que o vídeo VOLTA — o fio que costura as
+   cenas. Não é o estilo, é uma coisa ("a mesma bancada de concreto molhado").
+9. direcaoVisual: UMA frase EM INGLÊS com paleta, luz, lente e material comuns.
+10. movimento EM INGLÊS: curto e físico, e NÃO REPITA o mesmo em cenas seguidas
+    — oito "slow push-in" é uma câmera dormindo. NUNCA peça corte dentro do
+    clipe: o gerador anima um plano só e pedir corte devolve deformação.
+11. O EXEMPLO ABAIXO ENSINA FORMATO E GRAU DE LIGAÇÃO, NÃO CONTEÚDO. É de outro
     nicho de propósito. Se o seu resultado mencionar pão, forno ou farinha,
     você copiou em vez de gerar.
 
 SAÍDA: APENAS JSON válido:
-{"direcaoVisual":"...","motivo":"...","cenas":[{"ordem":1,"escala":"macro","promptVisual":"...","movimento":"..."}]}
+{"direcaoVisual":"...","motivo":"...","cenas":[{"ordem":1,"escala":"macro","ligacao":"...","promptVisual":"...","movimento":"..."}]}
 
 EXEMPLO:
 ENTRADA:
@@ -687,12 +695,12 @@ blocos:
   3. (9,6s-15,1s) "Um termômetro de dez reais resolve o que três anos de tentativa não resolveram."
 
 SAÍDA:
-{"direcaoVisual":"Cold grey north light against warm ivory, matte ceramic and scarred wood, flour dust suspended in the air, 50mm lens, shallow depth of field, clean empty space across the bottom third, vertical framing",
+{"direcaoVisual":"Cold grey north light against warm ivory, matte ceramic and scarred wood, flour dust in the air, 50mm lens, shallow depth of field, clean empty space across the bottom third, vertical framing",
 "motivo":"the same scarred marble slab, seen from different distances",
 "cenas":[
-{"ordem":1,"escala":"macro","promptVisual":"Condensation crawling across the curved wall of a cold glass jug on a marble slab, a single drop about to fall, cold grey light","movimento":"hold still while the drop swells and slides"},
-{"ordem":2,"escala":"amplo","promptVisual":"A wide cold kitchen before dawn, one bowl alone on a long marble slab, frost on the window, most of the frame empty","movimento":"slow drift to the left across the empty room"},
-{"ordem":3,"escala":"detalhe","promptVisual":"The thin red column of an analog thermometer against its scale, the numbers out of focus, warm lamp behind","movimento":"slow rack focus from the background onto the column"}
+{"ordem":1,"escala":"macro","ligacao":"mostra a agua fria que a frase cita: condensacao no jarro, o frio visivel","promptVisual":"Condensation crawling down the curved wall of a cold glass jug on a marble slab, one drop about to fall, cold grey light","movimento":"hold still while the drop swells and slides"},
+{"ordem":2,"escala":"amplo","ligacao":"mostra o fermento que nao subiu: a massa chata e sozinha na bancada","promptVisual":"A wide cold kitchen before dawn, one bowl of flat dough alone on a long marble slab, frost on the window, most of the frame empty","movimento":"slow drift to the left across the empty room"},
+{"ordem":3,"escala":"detalhe","ligacao":"mostra o termometro barato que a frase nomeia","promptVisual":"The thin red column of a cheap analog thermometer against its printed scale, warm lamp behind, background out of focus","movimento":"slow rack focus from the background onto the red column"}
 ]}
 
 AGORA GERE PARA:

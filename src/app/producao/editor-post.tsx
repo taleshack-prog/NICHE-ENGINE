@@ -11,6 +11,7 @@ import {
   Send,
   Sparkles,
   Trash2,
+  Volume2,
   Type,
   Wand2,
   X,
@@ -32,7 +33,12 @@ import {
   gerarMidia,
   removerMidia,
 } from "@/actions/midia";
-import { gerarReel, limparEtapasReel, refazerLegenda } from "@/actions/reel";
+import {
+  gerarReel,
+  limparEtapasReel,
+  previaNarracao,
+  refazerLegenda,
+} from "@/actions/reel";
 import { Botao } from "@/components/ui/botao";
 import { AreaTexto, Campo, Input, Selecao } from "@/components/ui/campos";
 import { Selo } from "@/components/ui/selo";
@@ -71,6 +77,8 @@ export function EditorPost({
   const [variacoes, setVariacoes] = React.useState<VariacaoRoteiro[] | null>(null);
   const [tema, setTema] = React.useState(post.titulo);
   const [corpoLegenda, setCorpoLegenda] = React.useState(44);
+  const [voz, setVoz] = React.useState("pf_dora");
+  const [velocidade, setVelocidade] = React.useState(1);
 
   const salvar = useAcao();
   const ia = useAcao();
@@ -104,6 +112,7 @@ export function EditorPost({
   const entregaveis = post.midiaLista.filter((m) => !ETAPAS.has(m.papel ?? ""));
   const etapas = post.midiaLista.filter((m) => ETAPAS.has(m.papel ?? ""));
   const cenasFeitas = post.midiaLista.filter((m) => m.papel === "cena").length;
+  const narracaoFeita = post.midiaLista.find((m) => m.papel === "narracao");
   const slides = post.midiaLista.filter((m) => m.papel === "capa" || m.papel === "slide").length;
 
   const campos = () => ({
@@ -201,6 +210,25 @@ export function EditorPost({
         `Reel pronto: ${d.duracaoSeg}s, ${d.clipes} cortes, narrado e legendado (~US$ ${d.custoEstimadoUsd}).`,
       );
     }
+  }
+
+  /**
+   * Gera só a voz, para ouvir antes de pagar os clipes. Voz e velocidade são
+   * gosto; testá-las isoladas custa centavos em vez de US$ 3.
+   */
+  async function ouvirVoz() {
+    if (
+      (cenasFeitas > 0 || clipesFeitos > 0) &&
+      !window.confirm(
+        "Gerar a voz de novo descarta as cenas e os clipes: com tempos novos, imagem e fala sairiam de sincronia. Continuar?",
+      )
+    ) {
+      return;
+    }
+    await midia.executar(() => previaNarracao({ postId: post.id, voz, velocidade }), {
+      sucesso: "Narração gerada. Ouça em Etapas guardadas, abaixo.",
+      aoConcluir: aoAtualizar,
+    });
   }
 
   /** Remonta e relegenda com outro corpo de fonte. Não chama o Kling. */
@@ -630,6 +658,48 @@ export function EditorPost({
                 </Botao>
               </div>
             </div>
+
+            {formato === "reel" ? (
+              <div className="flex flex-wrap items-center gap-2 rounded-md border border-borda px-2 py-1.5">
+                <span className="text-[11px] text-tenue">Voz</span>
+                <Selecao
+                  value={voz}
+                  onChange={(e) => setVoz(e.target.value)}
+                  className="h-7 w-28 text-xs"
+                  aria-label="Voz da narração"
+                >
+                  <option value="pf_dora">Dora (f)</option>
+                  <option value="pm_alex">Alex (m)</option>
+                  <option value="pm_santa">Santa (m)</option>
+                </Selecao>
+                <span className="text-[11px] text-tenue">Velocidade</span>
+                <input
+                  type="number"
+                  min={0.7}
+                  max={1.4}
+                  step={0.05}
+                  value={velocidade}
+                  onChange={(e) => setVelocidade(Number(e.target.value))}
+                  aria-label="Velocidade da narração"
+                  className="h-7 w-16 rounded-md border border-borda bg-superficie px-2 text-xs"
+                />
+                <Botao
+                  variante="secundario"
+                  tamanho="sm"
+                  onClick={ouvirVoz}
+                  disabled={ocupado || !falDisponivel}
+                >
+                  <Volume2 />
+                  Ouvir voz
+                </Botao>
+                <span className="text-[10px] text-tenue">
+                  custa centavos — acerte a voz antes de pagar os clipes
+                </span>
+                {narracaoFeita ? (
+                  <audio src={narracaoFeita.url} controls preload="metadata" className="h-7 w-full" />
+                ) : null}
+              </div>
+            ) : null}
 
             {reelPronto ? (
               <div className="flex items-center gap-2 rounded-md border border-acento/40 bg-acento/10 px-2 py-1.5">
