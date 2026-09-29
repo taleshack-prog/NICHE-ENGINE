@@ -359,7 +359,12 @@ export async function legendarVideo(
  */
 export const RESTRICOES_VISUAIS =
   "No people, no faces, no hands. No text, no letters, no numbers, no logos, no watermarks. " +
-  "Clean empty negative space across the bottom third. Photographic realism, no illustration.";
+  // O modelo de imagem não leu as regras do prompt de cenas. Sem repetir o
+  // veto aqui, um prompt de metáfora ainda atrai o acervo óbvio do assunto —
+  // foi assim que o primeiro Reel saiu com placa de circuito e neon azul.
+  "No circuit boards, no chips, no glowing neon grids, no holograms, no floating coins, " +
+  "no padlocks, no candlestick charts, no trading screens, no rockets, no globes with lines. " +
+  "Clean empty negative space across the bottom third. Photographic realism, no illustration, no 3D render.";
 
 /**
  * Deriva um prompt visual do roteiro. b-roll precisa de cena, não de tese.

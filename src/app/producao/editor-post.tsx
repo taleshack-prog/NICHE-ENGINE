@@ -212,11 +212,19 @@ export function EditorPost({
     });
   }
 
-  /** Descarta narração, cenas e clipes para refazer do zero com outro roteiro. */
-  async function refazerReel() {
-    if (!window.confirm("Descartar narração, cenas e clipes e refazer do zero? O que já foi gerado não volta.")) return;
-    await midia.executar(() => limparEtapasReel({ postId: post.id, tudo: true }), {
-      sucesso: "Etapas descartadas. Clique em Reel para gerar de novo.",
+  /**
+   * Descarta etapas para refazer. "visual" guarda a narração — o roteiro é o
+   * mesmo, só as imagens mudam, e manter a voz mantém a linha do tempo
+   * idêntica, o que torna a comparação entre as duas tentativas honesta.
+   */
+  async function refazerReel(alvo: "visual" | "tudo") {
+    const aviso =
+      alvo === "visual"
+        ? "Descartar cenas e clipes e gerar imagens novas? A narração e os tempos são mantidos. Os clipes serão pagos de novo."
+        : "Descartar tudo, inclusive a narração? Use isto quando o roteiro mudou.";
+    if (!window.confirm(aviso)) return;
+    await midia.executar(() => limparEtapasReel({ postId: post.id, alvo }), {
+      sucesso: "Descartado. Clique em Reel para gerar de novo.",
       aoConcluir: aoAtualizar,
     });
   }
@@ -636,8 +644,23 @@ export function EditorPost({
                 >
                   Assistir
                 </a>
-                <Botao variante="fantasma" tamanho="sm" onClick={refazerReel} disabled={ocupado}>
-                  Refazer
+                <Botao
+                  variante="fantasma"
+                  tamanho="sm"
+                  onClick={() => refazerReel("visual")}
+                  disabled={ocupado}
+                  title="Gera cenas e clipes novos, mantendo a narração e os tempos"
+                >
+                  Refazer visual
+                </Botao>
+                <Botao
+                  variante="fantasma"
+                  tamanho="sm"
+                  onClick={() => refazerReel("tudo")}
+                  disabled={ocupado}
+                  title="Descarta também a narração — use quando o roteiro mudou"
+                >
+                  Do zero
                 </Botao>
               </div>
             ) : null}

@@ -572,13 +572,34 @@ persona: {{persona}}`;
  * devolvem oito cenas de oito bancos de imagem diferentes, e o vídeo parece
  * montado com o que sobrou em vez de filmado para aquele roteiro.
  */
+export const ESCALAS = ["macro", "detalhe", "medio", "amplo", "zenital"] as const;
+export type EscalaPlano = (typeof ESCALAS)[number];
+
+/**
+ * Tradução da escala para o modelo de imagem.
+ *
+ * Sai daqui, e não do texto livre do promptVisual, porque a escala é o que o
+ * schema garante variar. Se ela viesse só embutida na frase, o modelo
+ * escreveria "close-up" em oito cenas e a validação não teria o que checar.
+ */
+export const ESCALA_EM_INGLES: Record<EscalaPlano, string> = {
+  macro: "extreme macro close-up, the subject fills the whole frame, textures visible",
+  detalhe: "tight detail shot of one small part of a larger object",
+  medio: "medium shot, the whole object in frame with its immediate surroundings",
+  amplo: "wide establishing shot of the whole space, the subject small in frame",
+  zenital: "overhead top-down shot looking straight down",
+};
+
 export const gerarCenasSchema = z
   .object({
     direcaoVisual: z.string().min(20).max(400),
+    /** Objeto ou lugar físico a que o vídeo volta. Ver a regra 7 do prompt. */
+    motivo: z.string().min(10).max(200),
     cenas: z
       .array(
         z.object({
           ordem: z.number().int().min(1).max(20),
+          escala: z.enum(ESCALAS),
           promptVisual: z.string().min(15).max(400),
           movimento: z.string().min(5).max(200),
         }),
@@ -588,6 +609,18 @@ export const gerarCenasSchema = z
   })
   .refine((d) => d.cenas.every((c, i) => c.ordem === i + 1), {
     message: "as cenas devem vir numeradas de 1 a N, em ordem",
+  })
+  /**
+   * Variedade imposta pelo SCHEMA, não pela instrução.
+   *
+   * "Varie os enquadramentos" é o tipo de regra que o modelo concorda e não
+   * cumpre: o primeiro Reel real saiu com oito planos médios de objeto sobre
+   * mesa, todos bonitos e todos iguais — exatamente a sensação de "genérico".
+   * Recusar duas escalas iguais em sequência obriga o corte a existir na
+   * imagem, e não só no tempo.
+   */
+  .refine((d) => d.cenas.every((c, i) => i === 0 || c.escala !== d.cenas[i - 1]?.escala), {
+    message: "duas cenas seguidas não podem ter a mesma escala de plano",
   });
 export type CenasGeradas = z.infer<typeof gerarCenasSchema>;
 export type CenaBroll = CenasGeradas["cenas"][number];
@@ -602,27 +635,48 @@ REGRAS OBRIGATÓRIAS:
 2. A CENA ILUSTRA O QUE ESTÁ SENDO DITO NAQUELE BLOCO — não o tema geral do
    vídeo. Cena genérica repetida em blocos diferentes destrói o corte: o
    espectador vê a mesma imagem e entende que nada avançou.
-3. CENAS CONSECUTIVAS PRECISAM SER VISIVELMENTE DIFERENTES entre si. Mude o
-   objeto, a escala ou o ângulo. Duas cenas parecidas em sequência são lidas
-   como uma cena só e o vídeo perde um corte.
-4. promptVisual EM INGLÊS: um OBJETO ou AMBIENTE CONCRETO.
+3. PROIBIDO O ÓBVIO DO NICHO. Para cada assunto existe um acervo de imagens que
+   todo mundo usa, e usá-lo é a definição de genérico. Se o nicho é dinheiro ou
+   tecnologia, estão BANIDOS: placa de circuito, chip, neon azul, grade
+   luminosa, holograma, moeda dourada, cofre, cadeado, gráfico de vela, tela de
+   corretora, foguete, touro, urso, figura encapuzada, globo com linhas. Se o
+   nicho for outro, o princípio é o mesmo: descarte a PRIMEIRA imagem que te
+   vier à cabeça e use a terceira.
+4. QUANDO O BLOCO FOR ABSTRATO, TRADUZA POR METÁFORA FÍSICA, não por ilustração
+   literal. "Escolher a rede errada" não é uma placa de circuito: é um desvio de
+   trilho na neblina, duas portas idênticas num corredor, um molho de chaves
+   parecidas. A metáfora precisa ser FILMÁVEL e do mundo real — objeto, lugar,
+   material, fenômeno físico.
+5. ESCALA: cada cena declara a sua ("macro", "detalhe", "medio", "amplo",
+   "zenital") e DUAS CENAS SEGUIDAS NÃO PODEM TER A MESMA. Oito planos médios de
+   objeto sobre mesa é um vídeo sem corte visual, por mais bonito que cada
+   quadro seja. Alterne: o que era macro vira amplo, o que era amplo vira
+   zenital.
+6. promptVisual EM INGLÊS: o OBJETO ou AMBIENTE concreto daquela cena, com
+   material, luz e superfície. Não repita a escala em palavras — ela entra
+   sozinha pelo campo "escala".
    - PROIBIDO: pessoas, rostos, mãos, multidões, texto, letras, números, logos,
-     interface de aplicativo. Rosto genérico é a estética que denuncia conteúdo
-     automático; e letra inventada pelo gerador aparece por baixo da legenda.
-   - Enquadramento VERTICAL. Deixe o terço inferior da cena limpo: é onde a
-     legenda queimada entra.
-5. movimento EM INGLÊS: o movimento de câmera daquele clipe, curto e físico
-   ("slow push-in", "lateral drift to the right", "slow tilt down"). NUNCA peça
-   corte, transição ou mudança de assunto dentro do clipe: o gerador de vídeo
-   anima um plano só, e pedir corte devolve deformação.
-6. direcaoVisual: UMA frase EM INGLÊS com o estilo comum a TODAS as cenas
-   (paleta, luz, material, tipo de lente). É o que faz as cenas parecerem do
-   mesmo vídeo.
-7. O EXEMPLO ABAIXO ENSINA FORMATO, NÃO CONTEÚDO. É de outro nicho de propósito.
-   Se o seu resultado mencionar pão, forno ou farinha, você copiou em vez de gerar.
+     interface de aplicativo. Rosto genérico denuncia conteúdo automático, e
+     letra inventada pelo gerador aparece por baixo da legenda.
+   - Enquadramento VERTICAL. Deixe o terço inferior limpo: é onde a legenda entra.
+7. motivo: UM objeto ou lugar físico a que o vídeo VOLTA — o fio que costura as
+   cenas. Não é o estilo, é uma coisa ("a mesma bancada de concreto molhado",
+   "o mesmo corredor de armários de metal"). Sem um motivo, oito cenas
+   diferentes viram oito vídeos diferentes.
+8. direcaoVisual: UMA frase EM INGLÊS com paleta, luz, lente e material comuns a
+   todas as cenas.
+9. movimento EM INGLÊS: o movimento de câmera daquele clipe, curto e físico. NÃO
+   REPITA o mesmo movimento em cenas seguidas — oito "slow push-in" é uma
+   câmera dormindo. Alterne entre aproximar, afastar, deslizar lateralmente,
+   inclinar, girar devagar e ficar parado com algo se movendo dentro do quadro.
+   NUNCA peça corte ou troca de assunto dentro do clipe: o gerador anima um
+   plano só e pedir corte devolve deformação.
+10. O EXEMPLO ABAIXO ENSINA FORMATO E GRAU DE OUSADIA, NÃO CONTEÚDO. É de outro
+    nicho de propósito. Se o seu resultado mencionar pão, forno ou farinha,
+    você copiou em vez de gerar.
 
 SAÍDA: APENAS JSON válido:
-{"direcaoVisual":"...","cenas":[{"ordem":1,"promptVisual":"...","movimento":"..."}]}
+{"direcaoVisual":"...","motivo":"...","cenas":[{"ordem":1,"escala":"macro","promptVisual":"...","movimento":"..."}]}
 
 EXEMPLO:
 ENTRADA:
@@ -633,11 +687,12 @@ blocos:
   3. (9,6s-15,1s) "Um termômetro de dez reais resolve o que três anos de tentativa não resolveram."
 
 SAÍDA:
-{"direcaoVisual":"Rustic kitchen still life, single window light from the left, flour dust in the air, warm ivory and burnt-umber palette, worn wood and matte ceramic, shallow depth of field, clean empty space across the bottom third, vertical framing",
+{"direcaoVisual":"Cold grey north light against warm ivory, matte ceramic and scarred wood, flour dust suspended in the air, 50mm lens, shallow depth of field, clean empty space across the bottom third, vertical framing",
+"motivo":"the same scarred marble slab, seen from different distances",
 "cenas":[
-{"ordem":1,"promptVisual":"A dense flat round of dough sunk in a floured proofing basket on dark wood, cold grey window light, empty surface below","movimento":"slow push-in toward the center of the dough"},
-{"ordem":2,"promptVisual":"Water pouring into a ceramic bowl of flour, condensation beading on the glass jug beside it, cool light, empty wooden surface beneath","movimento":"slow tilt down following the pouring water"},
-{"ordem":3,"promptVisual":"A small analog thermometer standing in a bowl of dough on a kitchen counter, warm side light, wide empty counter in the foreground","movimento":"slow lateral drift to the right"}
+{"ordem":1,"escala":"macro","promptVisual":"Condensation crawling across the curved wall of a cold glass jug on a marble slab, a single drop about to fall, cold grey light","movimento":"hold still while the drop swells and slides"},
+{"ordem":2,"escala":"amplo","promptVisual":"A wide cold kitchen before dawn, one bowl alone on a long marble slab, frost on the window, most of the frame empty","movimento":"slow drift to the left across the empty room"},
+{"ordem":3,"escala":"detalhe","promptVisual":"The thin red column of an analog thermometer against its scale, the numbers out of focus, warm lamp behind","movimento":"slow rack focus from the background onto the column"}
 ]}
 
 AGORA GERE PARA:

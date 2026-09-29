@@ -20,7 +20,12 @@ import {
 
 } from "@/lib/fal";
 import { gravarMidia, lerMidia, type MidiaItem } from "@/lib/json-fields";
-import { gerarCenasPrompt, gerarCenasSchema, interpolar } from "@/lib/prompts";
+import {
+  ESCALA_EM_INGLES,
+  gerarCenasPrompt,
+  gerarCenasSchema,
+  interpolar,
+} from "@/lib/prompts";
 import { blocosDaNarracao, blocosParaPrompt, textoNarravel, type Bloco } from "@/lib/reel";
 import { acao, idSchema, type ActionResult } from "./_shared";
 
@@ -173,7 +178,18 @@ export async function gerarReel(entrada: unknown): Promise<ActionResult<Resultad
           const existente = cenasGravadas.find((c) => c.ordem === b.ordem);
           if (existente) return Promise.resolve(existente);
           const cena = cenas[i];
-          const prompt = `${cena?.promptVisual ?? b.texto}. ${plano.direcaoVisual}. ${RESTRICOES_VISUAIS}`;
+          // Escala e motivo entram por fora do texto livre: são os dois campos
+          // que o schema garante — a escala por não repetir em sequência, o
+          // motivo por ser o mesmo em todas as cenas.
+          const prompt = [
+            cena?.promptVisual ?? b.texto,
+            cena ? ESCALA_EM_INGLES[cena.escala] : "",
+            plano.motivo,
+            plano.direcaoVisual,
+            RESTRICOES_VISUAIS,
+          ]
+            .filter(Boolean)
+            .join(". ");
           return gerarImagens(prompt, { quantidade: 1, aspecto: "portrait_16_9" }).then(
             ([img]): MidiaItem => ({
               tipo: "imagem",
@@ -371,34 +387,41 @@ export async function refazerLegenda(
 }
 
 /**
- * Apaga as etapas intermediárias, mantendo o vídeo final e a capa.
+ * Descarta etapas para refazer. A retomada é cega — ela reaproveita tudo que
+ * encontra —, então refazer exige dizer explicitamente o que não serve mais.
  *
- * Existe porque a retomada é cega: ela reaproveita tudo que encontra. Para
- * refazer um Reel com outro roteiro é preciso dizer explicitamente que o que
- * está gravado não serve mais — caso contrário o sistema monta de novo os
- * mesmos clipes por cima do texto novo.
+ * "visual" preserva a narração: o roteiro continua o mesmo, só as imagens
+ * mudam. Preservar também mantém a LINHA DO TEMPO idêntica, porque uma
+ * narração nova teria tempos ligeiramente diferentes e a comparação entre a
+ * tentativa velha e a nova deixaria de ser justa.
  */
 export async function limparEtapasReel(
   entrada: unknown,
 ): Promise<ActionResult<{ removidos: number }>> {
-  return acao(z.object({ postId: idSchema, tudo: z.boolean().optional() }), entrada, async (d) => {
-    const post = await prisma.post.findUniqueOrThrow({
-      where: { id: d.postId },
-      select: { id: true, midiaPaths: true },
-    });
+  return acao(
+    z.object({ postId: idSchema, alvo: z.enum(["visual", "tudo"]).default("visual") }),
+    entrada,
+    async (d) => {
+      const post = await prisma.post.findUniqueOrThrow({
+        where: { id: d.postId },
+        select: { id: true, midiaPaths: true },
+      });
 
-    const intermediarias = new Set(["narracao", "cena", "clipe"]);
-    const antes = lerMidia(post.midiaPaths);
-    const depois = d.tudo
-      ? antes.filter((m) => m.papel === "capa")
-      : antes.filter((m) => !intermediarias.has(m.papel ?? ""));
+      const descartar: ReadonlySet<string> =
+        d.alvo === "tudo"
+          ? new Set(["narracao", "cena", "clipe", "final"])
+          : new Set(["cena", "clipe", "final"]);
 
-    await prisma.post.update({
-      where: { id: post.id },
-      data: { midiaPaths: gravarMidia(depois) },
-    });
+      const antes = lerMidia(post.midiaPaths);
+      const depois = antes.filter((m) => !descartar.has(m.papel ?? ""));
 
-    revalidatePath("/producao");
-    return { removidos: antes.length - depois.length };
-  });
+      await prisma.post.update({
+        where: { id: post.id },
+        data: { midiaPaths: gravarMidia(depois) },
+      });
+
+      revalidatePath("/producao");
+      return { removidos: antes.length - depois.length };
+    },
+  );
 }
