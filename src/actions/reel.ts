@@ -14,7 +14,12 @@ import {
   gerarNarracao,
   transcrever,
 } from "@/lib/fal";
-import { agruparCues, montarVideoLocal, movimentoPadrao } from "@/lib/montagem";
+import {
+  agruparCues,
+  concatenarNarracao,
+  montarVideoLocal,
+  movimentoPadrao,
+} from "@/lib/montagem";
 import { gravarMidia, lerMidia, type MidiaItem } from "@/lib/json-fields";
 import {
   ESCALA_EM_INGLES,
@@ -22,7 +27,13 @@ import {
   gerarCenasSchema,
   interpolar,
 } from "@/lib/prompts";
-import { blocosDaNarracao, blocosParaPrompt, textoNarravel, type Bloco } from "@/lib/reel";
+import {
+  blocosDaNarracao,
+  blocosNarraveis,
+  blocosParaPrompt,
+  textoNarravel,
+  type Bloco,
+} from "@/lib/reel";
 import { acao, idSchema, type ActionResult } from "./_shared";
 
 /**
@@ -74,6 +85,50 @@ const gerarReelSchema = z.object({
 
 const porOrdem = (a: MidiaItem, b: MidiaItem) => (a.ordem ?? 0) - (b.ordem ?? 0);
 
+/** Silêncio entre os blocos do roteiro, em ms. É a pausa que dá respiro. */
+const PAUSA_MS = Number(process.env.REEL_PAUSA_MS || "420");
+
+/**
+ * Narra o roteiro bloco a bloco e emenda localmente.
+ *
+ * POR QUE NÃO UMA CHAMADA SÓ: entregar o roteiro inteiro com os blocos
+ * separados por linha em branco devolveu uma narração de QUATRO segundos — o
+ * sintetizador leu o primeiro parágrafo e descartou o resto, sem erro nenhum.
+ * Um bloco por chamada torna o sumiço impossível: cada trecho vira um arquivo
+ * que precisa existir para a emenda acontecer.
+ *
+ * A conferência de duração no fim é a rede: se a voz sair muito mais curta do
+ * que o texto comporta, o problema aparece aqui e não depois de oito imagens
+ * pagas em cima de uma linha do tempo truncada.
+ */
+async function narrarRoteiro(
+  roteiro: string,
+  chave: string,
+  opts: { voz?: (typeof VOZES_PT_BR)[number]; velocidade?: number },
+): Promise<{ url: string; duracaoMs: number }> {
+  const blocos = blocosNarraveis(roteiro);
+  if (blocos.length === 0) throw new Error("O roteiro está vazio.");
+
+  const partes = await Promise.all(blocos.map((b) => gerarNarracao(b, opts)));
+  const narracao = await concatenarNarracao({
+    partes: partes.map((p) => p.url),
+    pausaMs: PAUSA_MS,
+    chave,
+  });
+
+  // ~2,6 palavras por segundo é fala de narração em português. Metade disso
+  // já é sinal de truncamento, não de estilo.
+  const palavras = roteiro.split(/\s+/).filter(Boolean).length;
+  const esperadoMs = (palavras / 2.6) * 1000;
+  if (narracao.duracaoMs < esperadoMs * 0.55) {
+    throw new Error(
+      `A narração saiu com ${(narracao.duracaoMs / 1000).toFixed(1)}s para um roteiro de ${palavras} palavras (esperado ~${Math.round(esperadoMs / 1000)}s). O sintetizador cortou o texto. Confira se algum bloco do roteiro é longo demais e quebre-o em linhas menores.`,
+    );
+  }
+
+  return narracao;
+}
+
 export type ResultadoReel = {
   videoUrl: string;
   cenas: number;
@@ -122,14 +177,15 @@ export async function gerarReel(entrada: unknown): Promise<ActionResult<Resultad
     if (narracao) {
       reaproveitados++;
     } else {
-      const { url } = await gerarNarracao(textoNarravel(post.roteiro), {
+      const falada = await narrarRoteiro(post.roteiro, post.id, {
         voz: d.voz,
         velocidade: d.velocidade,
       });
       narracao = {
         tipo: "audio",
-        url,
+        url: falada.url,
         papel: "narracao",
+        duracaoMs: falada.duracaoMs,
         texto: textoNarravel(post.roteiro).slice(0, 300),
         criadoEm: new Date().toISOString(),
       };
@@ -315,7 +371,7 @@ export async function gerarReel(entrada: unknown): Promise<ActionResult<Resultad
  */
 export async function previaNarracao(
   entrada: unknown,
-): Promise<ActionResult<{ url: string; descartados: number }>> {
+): Promise<ActionResult<{ url: string; duracaoSeg: number; descartados: number }>> {
   return acao(
     z.object({
       postId: idSchema,
@@ -332,7 +388,7 @@ export async function previaNarracao(
       });
       if (!post.roteiro?.trim()) throw new Error("Escreva ou gere o roteiro antes.");
 
-      const { url } = await gerarNarracao(textoNarravel(post.roteiro), {
+      const falada = await narrarRoteiro(post.roteiro, post.id, {
         voz: d.voz,
         velocidade: d.velocidade,
       });
@@ -343,8 +399,9 @@ export async function previaNarracao(
         ...antes.filter((m) => !obsoletos.has(m.papel ?? "")),
         {
           tipo: "audio",
-          url,
+          url: falada.url,
           papel: "narracao",
+          duracaoMs: falada.duracaoMs,
           texto: textoNarravel(post.roteiro).slice(0, 300),
           criadoEm: new Date().toISOString(),
         },
@@ -356,7 +413,11 @@ export async function previaNarracao(
       });
 
       revalidatePath("/producao");
-      return { url, descartados: antes.filter((m) => obsoletos.has(m.papel ?? "")).length };
+      return {
+        url: falada.url,
+        duracaoSeg: Math.round(falada.duracaoMs / 1000),
+        descartados: antes.filter((m) => obsoletos.has(m.papel ?? "")).length,
+      };
     },
   );
 }

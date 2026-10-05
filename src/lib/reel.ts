@@ -18,22 +18,33 @@ export type Bloco = { ordem: number; inicioMs: number; duracaoMs: number; texto:
  * independente e some com a pontuação final — a narração sai sem respiro entre
  * as ideias.
  */
-export function textoNarravel(roteiro: string): string {
-  return (
-    roteiro
-      .split(/\n+/)
-      .map((l) => l.trim())
-      .filter(Boolean)
-      // Toda linha termina em pontuação forte. Sem ponto final, o sintetizador
-      // emenda o fim de um bloco no começo do outro e a frase não fecha.
-      .map((l) => (/[.!?…]$/.test(l) ? l : `${l.replace(/[:,;]$/, "")}.`))
-      // Parágrafo, não espaço. Juntar os quatro blocos do roteiro com " "
-      // entregava um texto corrido ao Kokoro, que lê sem respiro entre gancho,
-      // corpo, loop e CTA — a narração soava como quem está sem tempo de
-      // terminar. A quebra dupla é o que vira pausa na fala.
-      .join("\n\n")
-  );
+/**
+ * Divide o roteiro nos blocos que serão narrados separadamente.
+ *
+ * POR QUE SEPARADO: a versão anterior entregava o roteiro inteiro numa única
+ * chamada, com os blocos juntos por linha em branco, esperando que a quebra
+ * virasse pausa. O resultado real foi uma narração de 4 segundos — o
+ * sintetizador leu só o primeiro parágrafo e descartou o resto, sem erro.
+ *
+ * Narrar bloco a bloco e emendar aqui tira a aposta do caminho: a pausa passa
+ * a ser silêncio medido em milissegundos, e nenhum trecho pode sumir em
+ * silêncio porque cada um vira um arquivo que precisa existir.
+ */
+export function blocosNarraveis(roteiro: string): string[] {
+  return roteiro
+    .split(/\n+/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    // Pontuação forte no fim de cada bloco: sem ponto final, o sintetizador
+    // sobe a entonação como se a frase continuasse.
+    .map((l) => (/[.!?…]$/.test(l) ? l : `${l.replace(/[:,;]$/, "")}.`));
 }
+
+/** Texto completo da narração, para registro e conferência. */
+export function textoNarravel(roteiro: string): string {
+  return blocosNarraveis(roteiro).join(" ");
+}
+
 
 /**
  * Corta a linha do tempo em blocos de duração igual, um por clipe.

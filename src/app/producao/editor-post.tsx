@@ -225,10 +225,16 @@ export function EditorPost({
     ) {
       return;
     }
-    await midia.executar(() => previaNarracao({ postId: post.id, voz, velocidade }), {
-      sucesso: "Narração gerada. Ouça em Etapas guardadas, abaixo.",
+    const r = await midia.executar(() => previaNarracao({ postId: post.id, voz, velocidade }), {
       aoConcluir: aoAtualizar,
     });
+    if (r && typeof r === "object" && "duracaoSeg" in r) {
+      // A duração vem no aviso porque é a conferência que faltava: uma
+      // narração curta demais para o roteiro é truncamento, e sem o número na
+      // tela isso só apareceria depois, no vídeo montado.
+      const d = r as { duracaoSeg: number };
+      toast.success(`Narração de ${d.duracaoSeg}s. Ouça no player acima antes de gerar o Reel.`);
+    }
   }
 
   /** Remonta e relegenda com outro corpo de fonte. Não chama o Kling. */

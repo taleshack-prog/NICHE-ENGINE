@@ -305,6 +305,92 @@ async function baixarPara(destino: string, origem: string): Promise<void> {
   await writeFile(destino, await readFile(local));
 }
 
+/** Duração real de um arquivo de mídia, em ms. */
+export async function duracaoDeMidia(arquivo: string): Promise<number> {
+  const { stdout } = await exec("ffprobe", [
+    "-v", "error",
+    "-show_entries", "format=duration",
+    "-of", "default=nw=1:nk=1",
+    arquivo,
+  ]);
+  const seg = Number(stdout.trim());
+  if (!Number.isFinite(seg)) throw new MontagemError(`não consegui medir ${arquivo}`);
+  return Math.round(seg * 1000);
+}
+
+export type NarracaoMontada = { url: string; arquivo: string; duracaoMs: number };
+
+/**
+ * Emenda os blocos narrados com silêncio entre eles.
+ *
+ * A pausa vira um parâmetro em milissegundos em vez de uma esperança sobre
+ * como o sintetizador interpreta uma quebra de linha. E a narração passa a
+ * morar aqui: as URLs do fornecedor expiram, e uma narração que some leva
+ * junto a linha do tempo de todas as cenas já pagas.
+ */
+export async function concatenarNarracao(args: {
+  partes: readonly string[];
+  pausaMs?: number;
+  chave: string;
+}): Promise<NarracaoMontada> {
+  await exigirFfmpeg();
+  if (args.partes.length === 0) throw new MontagemError("nenhum bloco de narração");
+
+  const pausaMs = args.pausaMs ?? 420;
+  const hash = createHash("sha1")
+    .update(JSON.stringify({ k: args.chave, p: args.partes, s: pausaMs, v: 1 }))
+    .digest("hex")
+    .slice(0, 12);
+
+  const destino = path.join(process.cwd(), "public", "midia", "audio");
+  mkdirSync(destino, { recursive: true });
+  const arquivo = path.join(destino, `${hash}.m4a`);
+  const url = `/midia/audio/${hash}.m4a`;
+
+  const tmp = await mkdtemp(path.join(os.tmpdir(), "niche-voz-"));
+  try {
+    const entradas: string[] = [];
+    for (const [i, parte] of args.partes.entries()) {
+      const bruto = path.join(tmp, `bloco-${i}.audio`);
+      await baixarPara(bruto, parte);
+      // Normaliza para um formato comum antes de concatenar: blocos vindos em
+      // taxas diferentes emendados crus produzem um arquivo cuja duração não
+      // bate com a soma — e a legenda inteira sai do lugar.
+      const wav = path.join(tmp, `bloco-${i}.wav`);
+      await exec("ffmpeg", ["-y", "-i", bruto, "-ar", "44100", "-ac", "1", wav]);
+      entradas.push(wav);
+
+      if (i < args.partes.length - 1 && pausaMs > 0) {
+        const silencio = path.join(tmp, `pausa-${i}.wav`);
+        await exec("ffmpeg", [
+          "-y",
+          "-f", "lavfi",
+          "-i", "anullsrc=channel_layout=mono:sample_rate=44100",
+          "-t", (pausaMs / 1000).toFixed(3),
+          silencio,
+        ]);
+        entradas.push(silencio);
+      }
+    }
+
+    const lista = path.join(tmp, "partes.txt");
+    await writeFile(lista, entradas.map((e) => `file '${e.replace(/'/g, "'\\''")}'`).join("\n"));
+    await exec("ffmpeg", [
+      "-y",
+      "-f", "concat",
+      "-safe", "0",
+      "-i", lista,
+      "-c:a", "aac",
+      "-b:a", "160k",
+      arquivo,
+    ]);
+
+    return { url, arquivo, duracaoMs: await duracaoDeMidia(arquivo) };
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
+}
+
 export type ResultadoMontagem = {
   /** URL servida pelo dashboard. */
   url: string;
