@@ -85,6 +85,36 @@ const gerarReelSchema = z.object({
 
 const porOrdem = (a: MidiaItem, b: MidiaItem) => (a.ordem ?? 0) - (b.ordem ?? 0);
 
+/**
+ * Mínimo de palavras para o roteiro valer um Reel.
+ *
+ * POR QUE EXISTE: um post com 10 palavras no campo roteiro — o título copiado,
+ * sem roteiro gerado — passou pela cadeia inteira e devolveu uma narração de 4
+ * segundos. Correta, aliás: 10 palavras a 2,6 por segundo dão 4 segundos. O
+ * defeito não era a voz, era o sistema aceitar produzir um Reel a partir de um
+ * título e só revelar isso depois de gastar.
+ *
+ * 50 palavras ≈ 20 segundos, o piso de um Reel que entrega alguma coisa. O
+ * prompt de roteiro mira 30 a 60 segundos.
+ */
+const MIN_PALAVRAS_ROTEIRO = Number(process.env.REEL_MIN_PALAVRAS || "50");
+
+function exigirRoteiroNarravel(roteiro: string | null | undefined): string {
+  const texto = roteiro?.trim();
+  if (!texto) {
+    throw new Error(
+      "Gere ou escreva o roteiro antes — o Reel é a narração dele, não um texto novo.",
+    );
+  }
+  const palavras = texto.split(/\s+/).filter(Boolean).length;
+  if (palavras < MIN_PALAVRAS_ROTEIRO) {
+    throw new Error(
+      `O roteiro tem ${palavras} palavras — daria cerca de ${Math.round(palavras / 2.6)}s de narração. Parece o título no lugar do roteiro. Use "3 variações" na seção Roteiro e aplique uma antes de gerar o Reel.`,
+    );
+  }
+  return texto;
+}
+
 /** Silêncio entre os blocos do roteiro, em ms. É a pausa que dá respiro. */
 const PAUSA_MS = Number(process.env.REEL_PAUSA_MS || "420");
 
@@ -147,11 +177,7 @@ export async function gerarReel(entrada: unknown): Promise<ActionResult<Resultad
       include: { nicho: { select: { nome: true, subNicho: true } } },
     });
 
-    if (!post.roteiro?.trim()) {
-      throw new Error(
-        "Gere ou escreva o roteiro antes — o Reel é a narração dele, não um texto novo.",
-      );
-    }
+    const roteiro = exigirRoteiroNarravel(post.roteiro);
     if (post.formato !== "reel") {
       throw new Error(
         `Este post está gravado como "${post.formato}". Mude o Formato para Reel no topo do editor e clique em Salvar — para carrossel, o botão é o Carrossel.`,
@@ -177,7 +203,7 @@ export async function gerarReel(entrada: unknown): Promise<ActionResult<Resultad
     if (narracao) {
       reaproveitados++;
     } else {
-      const falada = await narrarRoteiro(post.roteiro, post.id, {
+      const falada = await narrarRoteiro(roteiro, post.id, {
         voz: d.voz,
         velocidade: d.velocidade,
       });
@@ -186,7 +212,7 @@ export async function gerarReel(entrada: unknown): Promise<ActionResult<Resultad
         url: falada.url,
         papel: "narracao",
         duracaoMs: falada.duracaoMs,
-        texto: textoNarravel(post.roteiro).slice(0, 300),
+        texto: textoNarravel(roteiro).slice(0, 300),
         criadoEm: new Date().toISOString(),
       };
       await salvar([...midia, narracao]);
@@ -386,9 +412,9 @@ export async function previaNarracao(
         where: { id: d.postId },
         select: { id: true, roteiro: true, midiaPaths: true },
       });
-      if (!post.roteiro?.trim()) throw new Error("Escreva ou gere o roteiro antes.");
+      const roteiro = exigirRoteiroNarravel(post.roteiro);
 
-      const falada = await narrarRoteiro(post.roteiro, post.id, {
+      const falada = await narrarRoteiro(roteiro, post.id, {
         voz: d.voz,
         velocidade: d.velocidade,
       });
@@ -402,7 +428,7 @@ export async function previaNarracao(
           url: falada.url,
           papel: "narracao",
           duracaoMs: falada.duracaoMs,
-          texto: textoNarravel(post.roteiro).slice(0, 300),
+          texto: textoNarravel(roteiro).slice(0, 300),
           criadoEm: new Date().toISOString(),
         },
       ];
