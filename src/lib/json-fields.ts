@@ -40,6 +40,19 @@ export const midiaItemSchema = z.object({
    * coverText e renderizar de novo sem ter que pagar outra geração no fal.
    */
   origemUrl: z.string().optional(),
+  /**
+   * Blocos da narração: a URL pública que o fal devolveu para cada um e o
+   * ponto em que entra na linha do tempo.
+   *
+   * Existe porque o arquivo final da narração é LOCAL (/midia/audio/...) e o
+   * serviço de transcrição precisa BAIXAR o áudio — caminho local ele não
+   * alcança. Os blocos continuam hospedados no fornecedor: transcrever cada um
+   * e somar o deslocamento dá a mesma linha do tempo, sem precisar expor o
+   * dashboard na internet.
+   */
+  partes: z
+    .array(z.object({ url: z.string().min(1), inicioMs: z.number().int().min(0) }))
+    .optional(),
 });
 export type MidiaItem = z.infer<typeof midiaItemSchema>;
 

@@ -13,6 +13,7 @@ import {
   gerarImagens,
   gerarNarracao,
   transcrever,
+  type TrechoFalado,
 } from "@/lib/fal";
 import {
   agruparCues,
@@ -115,6 +116,41 @@ function exigirRoteiroNarravel(roteiro: string | null | undefined): string {
   return texto;
 }
 
+/**
+ * Palavras com tempo, para recortar as cenas e cronometrar a legenda.
+ *
+ * Transcreve BLOCO A BLOCO, nas URLs públicas que o fal devolveu, e desloca
+ * cada resultado pela posição do bloco. O arquivo final da narração é local
+ * (/midia/audio/...) e o serviço de transcrição precisa baixar o áudio —
+ * mandar o caminho local era pedir para ele buscar um arquivo que só existe
+ * nesta máquina.
+ */
+async function palavrasDaNarracao(narracao: MidiaItem): Promise<TrechoFalado[]> {
+  const partes = narracao.partes;
+
+  if (!partes?.length) {
+    // Narração anterior a este formato. Se ficou hospedada no fornecedor, ainda
+    // dá para transcrever direto; se é local, não há como — e dizer isso é
+    // melhor que deixar o fal responder com um erro de validação.
+    if (!/^https?:\/\//i.test(narracao.url)) {
+      throw new Error(
+        "Esta narração foi gravada antes da correção e não pode ser transcrita. Clique em Ouvir voz para gerá-la de novo — as cenas e o vídeo serão refeitos a partir dela.",
+      );
+    }
+    return transcrever(narracao.url, "word");
+  }
+
+  const porParte = await Promise.all(partes.map((p) => transcrever(p.url, "word")));
+  return porParte.flatMap((trechos, i) => {
+    const deslocamento = partes[i]?.inicioMs ?? 0;
+    return trechos.map((t) => ({
+      inicioMs: t.inicioMs + deslocamento,
+      fimMs: t.fimMs + deslocamento,
+      texto: t.texto,
+    }));
+  });
+}
+
 /** Silêncio entre os blocos do roteiro, em ms. É a pausa que dá respiro. */
 const PAUSA_MS = Number(process.env.REEL_PAUSA_MS || "420");
 
@@ -135,7 +171,7 @@ async function narrarRoteiro(
   roteiro: string,
   chave: string,
   opts: { voz?: (typeof VOZES_PT_BR)[number]; velocidade?: number },
-): Promise<{ url: string; duracaoMs: number }> {
+): Promise<{ url: string; duracaoMs: number; partes: { url: string; inicioMs: number }[] }> {
   const blocos = blocosNarraveis(roteiro);
   if (blocos.length === 0) throw new Error("O roteiro está vazio.");
 
@@ -212,6 +248,7 @@ export async function gerarReel(entrada: unknown): Promise<ActionResult<Resultad
         url: falada.url,
         papel: "narracao",
         duracaoMs: falada.duracaoMs,
+        partes: falada.partes,
         texto: textoNarravel(roteiro).slice(0, 300),
         criadoEm: new Date().toISOString(),
       };
@@ -223,7 +260,7 @@ export async function gerarReel(entrada: unknown): Promise<ActionResult<Resultad
     // cenas e cronometrar a legenda. É barata, então roda também na retomada;
     // guardar palavra por palavra no banco pesaria mais do que o que custa
     // pedir de novo.
-    const palavras = await transcrever(narracao.url, "word");
+    const palavras = await palavrasDaNarracao(narracao);
 
     // Os blocos vêm das cenas quando elas existem: recalcular devolveria
     // limites ligeiramente diferentes e as imagens já pagas sairiam do lugar.
@@ -428,6 +465,7 @@ export async function previaNarracao(
           url: falada.url,
           papel: "narracao",
           duracaoMs: falada.duracaoMs,
+          partes: falada.partes,
           texto: textoNarravel(roteiro).slice(0, 300),
           criadoEm: new Date().toISOString(),
         },
@@ -498,7 +536,7 @@ export async function refazerLegenda(
         movimento: movimentoPadrao(c.ordem ?? i + 1),
       })),
       audioUrl: narracao.url,
-      legendas: agruparCues(await transcrever(narracao.url, "word")),
+      legendas: agruparCues(await palavrasDaNarracao(narracao)),
       formato: "vertical",
       estiloLegenda: { corpo, fonte: "Poppins" },
       chave: `${post.id}-${corpo}`,

@@ -318,7 +318,14 @@ export async function duracaoDeMidia(arquivo: string): Promise<number> {
   return Math.round(seg * 1000);
 }
 
-export type NarracaoMontada = { url: string; arquivo: string; duracaoMs: number };
+export type ParteNarracao = { url: string; inicioMs: number };
+export type NarracaoMontada = {
+  url: string;
+  arquivo: string;
+  duracaoMs: number;
+  /** Cada bloco com a URL de origem e onde ele entra na linha do tempo. */
+  partes: ParteNarracao[];
+};
 
 /**
  * Emenda os blocos narrados com silêncio entre eles.
@@ -350,6 +357,9 @@ export async function concatenarNarracao(args: {
   const tmp = await mkdtemp(path.join(os.tmpdir(), "niche-voz-"));
   try {
     const entradas: string[] = [];
+    const posicoes: ParteNarracao[] = [];
+    let cursorMs = 0;
+
     for (const [i, parte] of args.partes.entries()) {
       const bruto = path.join(tmp, `bloco-${i}.audio`);
       await baixarPara(bruto, parte);
@@ -359,6 +369,12 @@ export async function concatenarNarracao(args: {
       const wav = path.join(tmp, `bloco-${i}.wav`);
       await exec("ffmpeg", ["-y", "-i", bruto, "-ar", "44100", "-ac", "1", wav]);
       entradas.push(wav);
+
+      // Posição do bloco na linha do tempo, medida e não estimada: é o que
+      // permite deslocar a transcrição de cada bloco e remontar os tempos da
+      // narração inteira sem transcrever o arquivo final.
+      posicoes.push({ url: parte, inicioMs: cursorMs });
+      cursorMs += await duracaoDeMidia(wav);
 
       if (i < args.partes.length - 1 && pausaMs > 0) {
         const silencio = path.join(tmp, `pausa-${i}.wav`);
@@ -370,6 +386,7 @@ export async function concatenarNarracao(args: {
           silencio,
         ]);
         entradas.push(silencio);
+        cursorMs += pausaMs;
       }
     }
 
@@ -385,7 +402,7 @@ export async function concatenarNarracao(args: {
       arquivo,
     ]);
 
-    return { url, arquivo, duracaoMs: await duracaoDeMidia(arquivo) };
+    return { url, arquivo, duracaoMs: await duracaoDeMidia(arquivo), partes: posicoes };
   } finally {
     await rm(tmp, { recursive: true, force: true });
   }
