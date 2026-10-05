@@ -25,6 +25,7 @@ import { Card, CardConteudo } from "@/components/ui/card";
 import { Modal, ModalConteudo, ModalGatilho } from "@/components/ui/modal";
 import { Selo } from "@/components/ui/selo";
 import { useAcao } from "@/components/ui/use-acao";
+import { useConfirmacao } from "@/components/ui/use-confirmacao";
 import { lerEstrutura } from "@/lib/json-fields";
 import { ehHipotese } from "@/lib/padroes";
 import { fmtNum } from "@/lib/utils";
@@ -59,6 +60,8 @@ export function SwipeFile({
   const [filtroNicho, setFiltroNicho] = React.useState("");
   const [filtroPadrao, setFiltroPadrao] = React.useState("");
   const { carregando, executar } = useAcao();
+  // A chave leva o id: armar um e clicar em outro apagaria o errado.
+  const { confirmar } = useConfirmacao();
 
   const visiveis = templates.filter(
     (t) =>
@@ -67,7 +70,8 @@ export function SwipeFile({
   );
 
   async function remover(id: string, gancho: string) {
-    if (!window.confirm(`Excluir o template "${gancho.slice(0, 60)}"?`)) return;
+    if (!confirmar(`excluir-${id}`, `Excluir o template "${gancho.slice(0, 40)}" é irreversível.`))
+      return;
     await executar(() => deleteTemplate({ id }), {
       sucesso: "Template excluído.",
       aoConcluir: () => router.refresh(),

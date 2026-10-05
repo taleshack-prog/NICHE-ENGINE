@@ -43,6 +43,7 @@ import { Botao } from "@/components/ui/botao";
 import { AreaTexto, Campo, Input, Selecao } from "@/components/ui/campos";
 import { Selo } from "@/components/ui/selo";
 import { useAcao } from "@/components/ui/use-acao";
+import { useConfirmacao } from "@/components/ui/use-confirmacao";
 import { FORMATOS, FORMATO_LABEL, type Formato } from "@/lib/domain";
 import type { VariacaoRoteiro } from "@/lib/prompts";
 import type { PostProducao } from "@/lib/queries";
@@ -79,6 +80,8 @@ export function EditorPost({
   const [corpoLegenda, setCorpoLegenda] = React.useState(44);
   const [voz, setVoz] = React.useState("pf_dora");
   const [velocidade, setVelocidade] = React.useState(1);
+
+  const { armado, confirmar } = useConfirmacao();
 
   const salvar = useAcao();
   const ia = useAcao();
@@ -196,7 +199,7 @@ export function EditorPost({
     const aviso = retomando
       ? `Retomando: ${cenasFeitas} cenas já prontas serão reaproveitadas. Continuar?`
       : "Gera narração, cenas e monta o vídeo aqui mesmo com legenda queimada. Custa cerca de US$ 0,03 por cena (uma cena a cada 6 s). Continuar?";
-    if (!window.confirm(aviso)) return;
+    if (!confirmar("reel", aviso)) return;
 
     if (!(await garantirSalvo())) return;
 
@@ -219,8 +222,9 @@ export function EditorPost({
   async function ouvirVoz() {
     if (
       (cenasFeitas > 0 || clipesFeitos > 0) &&
-      !window.confirm(
-        "Gerar a voz de novo descarta as cenas e os clipes: com tempos novos, imagem e fala sairiam de sincronia. Continuar?",
+      !confirmar(
+        "voz",
+        "Gerar a voz de novo descarta as cenas e os clipes: com tempos novos, imagem e fala sairiam de sincronia.",
       )
     ) {
       return;
@@ -256,7 +260,7 @@ export function EditorPost({
       alvo === "visual"
         ? "Descartar cenas e clipes e gerar imagens novas? A narração e os tempos são mantidos. Os clipes serão pagos de novo."
         : "Descartar tudo, inclusive a narração? Use isto quando o roteiro mudou.";
-    if (!window.confirm(aviso)) return;
+    if (!confirmar(`refazer-${alvo}`, aviso)) return;
     await midia.executar(() => limparEtapasReel({ postId: post.id, alvo }), {
       sucesso: "Descartado. Clique em Reel para gerar de novo.",
       aoConcluir: aoAtualizar,
@@ -322,8 +326,9 @@ export function EditorPost({
   /** Roteiro → 5-8 slides com texto próprio, num clique. */
   async function carrossel() {
     if (
-      !window.confirm(
-        "Gerar o carrossel inteiro? Isso substitui as imagens atuais e gera uma imagem por slide (5 a 8 chamadas pagas no fal.ai).",
+      !confirmar(
+        "carrossel",
+        "Gerar o carrossel inteiro substitui as imagens atuais: 5 a 8 chamadas pagas no fal.ai.",
       )
     ) {
       return;
@@ -374,7 +379,7 @@ export function EditorPost({
   }
 
   async function publicar() {
-    if (!window.confirm("Publicar agora no Instagram via Graph API?")) return;
+    if (!confirmar("publicar", "Publicar agora no Instagram via Graph API.")) return;
     await publicacao.executar(() => publicarPost({ id: post.id }), {
       sucesso: "Publicado.",
       aoConcluir: aoAtualizar,
@@ -382,7 +387,7 @@ export function EditorPost({
   }
 
   async function excluir() {
-    if (!window.confirm(`Excluir o post "${post.titulo}"? Ação irreversível.`)) return;
+    if (!confirmar("excluir", `Excluir "${post.titulo}" é irreversível.`)) return;
     const r = await salvar.executar(() => deletePost({ id: post.id }), {
       sucesso: "Post excluído.",
     });
@@ -626,7 +631,7 @@ export function EditorPost({
                   }
                 >
                   <GalleryHorizontalEnd />
-                  Carrossel
+                  {armado === "carrossel" ? "Confirmar" : "Carrossel"}
                 </Botao>
                 <Botao
                   variante="primario"
@@ -640,7 +645,7 @@ export function EditorPost({
                   }
                 >
                   <Clapperboard />
-                  {midia.carregando ? "Produzindo…" : "Reel"}
+                  {midia.carregando ? "Produzindo…" : armado === "reel" ? "Confirmar" : "Reel"}
                 </Botao>
                 <Botao
                   variante="contorno"

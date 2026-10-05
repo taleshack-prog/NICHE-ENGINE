@@ -17,6 +17,7 @@ import { Modal, ModalConteudo, ModalGatilho } from "@/components/ui/modal";
 import { Selo } from "@/components/ui/selo";
 import { TCabecalho, TCorpo, TD, TH, TLinha, Tabela, Vazio } from "@/components/ui/tabela";
 import { useAcao } from "@/components/ui/use-acao";
+import { useConfirmacao } from "@/components/ui/use-confirmacao";
 import { NICHO_STATUS, NICHO_STATUS_LABEL, type NichoStatus } from "@/lib/domain";
 import { faixaScore } from "@/lib/scoring";
 
@@ -38,6 +39,7 @@ const TOM_FAIXA = { alto: "ok", medio: "alerta", baixo: "erro", indefinido: "neu
 export function TabelaNichos({ nichos }: { nichos: NichoLinha[] }) {
   const router = useRouter();
   const { carregando, executar } = useAcao();
+  const { confirmar } = useConfirmacao();
 
   async function mudarStatus(id: string, status: NichoStatus) {
     await executar(() => updateNicho({ id, status }), {
@@ -67,8 +69,9 @@ export function TabelaNichos({ nichos }: { nichos: NichoLinha[] }) {
 
   async function remover(id: string, nome: string) {
     if (
-      !window.confirm(
-        `Excluir "${nome}"? Isso apaga também os templates e posts vinculados. Ação irreversível.`,
+      !confirmar(
+        `excluir-${id}`,
+        `Excluir "${nome}" apaga também os templates e posts vinculados, e é irreversível.`,
       )
     ) {
       return;
