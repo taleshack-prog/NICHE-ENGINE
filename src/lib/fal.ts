@@ -81,6 +81,16 @@ export const SEGUNDOS_POR_CLIPE = 5;
  */
 export const CUSTO_CLIPE_USD = Number(process.env.FAL_CUSTO_CLIPE_USD || "0.35");
 
+/**
+ * Preço de uma imagem no modelo padrão (FLUX dev).
+ *
+ * É a unidade de custo do vídeo depois que a montagem passou para o ffmpeg
+ * local: uma cena agora é uma imagem, não um clipe. Duas ordens de grandeza
+ * de diferença — US$ 0,03 contra US$ 0,35 — e é por isso que a conta por
+ * minuto caiu de US$ 4,20 para centavos.
+ */
+export const CUSTO_IMAGEM_USD = Number(process.env.FAL_CUSTO_IMAGEM_USD || "0.03");
+
 type FalImagemResposta = { images?: Array<{ url?: string }> };
 
 /** Geração síncrona de imagens (FLUX). Retorna itens prontos para midiaPaths. */
@@ -256,12 +266,20 @@ export type TrechoFalado = { inicioMs: number; fimMs: number; texto: string };
  * o vídeo precisa e quando cada um entra. Estimar por contagem de palavras
  * dessincroniza em poucos segundos e o corte passa a cair no meio da frase.
  */
-export async function transcrever(audioUrl: string): Promise<TrechoFalado[]> {
+/**
+ * `nivel: "word"` devolve um trecho por palavra — é o que a legenda precisa.
+ * No nível de segmento, uma frase inteira fica 8 segundos na tela e o
+ * espectador lê antes de a voz chegar lá.
+ */
+export async function transcrever(
+  audioUrl: string,
+  nivel: "segment" | "word" = "segment",
+): Promise<TrechoFalado[]> {
   const r = await direto<{
     chunks?: Array<{ timestamp?: [number | null, number | null]; text?: string }>;
   }>(
     MODELO_TRANSCRICAO(),
-    { audio_url: audioUrl, task: "transcribe", language: "pt", chunk_level: "segment" },
+    { audio_url: audioUrl, task: "transcribe", language: "pt", chunk_level: nivel },
     "transcrição",
   );
 

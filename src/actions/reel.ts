@@ -6,19 +6,15 @@ import { callClaudeStructured, iaDisponivel } from "@/lib/ai";
 import { aplicarCapa, formatoValido, renderizarCapa } from "@/lib/capa";
 import { prisma } from "@/lib/db";
 import {
-  CUSTO_CLIPE_USD,
+  CUSTO_IMAGEM_USD,
   RESTRICOES_VISUAIS,
-  SEGUNDOS_POR_CLIPE,
   VOZES_PT_BR,
   falDisponivel,
   gerarImagens,
   gerarNarracao,
-  gerarVideo,
-  legendarVideo,
-  montarVideo,
   transcrever,
-
 } from "@/lib/fal";
+import { agruparCues, montarVideoLocal, movimentoPadrao } from "@/lib/montagem";
 import { gravarMidia, lerMidia, type MidiaItem } from "@/lib/json-fields";
 import {
   ESCALA_EM_INGLES,
@@ -44,8 +40,17 @@ import { acao, idSchema, type ActionResult } from "./_shared";
  * diferentes, invalidando todos os clipes já produzidos.
  */
 
-/** Teto de clipes por Reel. Ver a guarda de custo em `estimar`. */
-const TETO_CLIPES = Number(process.env.REEL_MAX_CLIPES || "12");
+/**
+ * Segundos de tela por cena.
+ *
+ * Era 5 porque o Kling entregava clipes de 5 segundos — limite do fornecedor,
+ * não escolha de edição. Com a montagem local a duração é livre, e 6 segundos
+ * é o ritmo de b-roll documental: tempo de ler a imagem sem ela cansar.
+ */
+const SEGUNDOS_POR_CENA = Number(process.env.REEL_SEGUNDOS_POR_CENA || "6");
+
+/** Teto de cenas por vídeo. Guarda de custo: cada cena é uma imagem paga. */
+const TETO_CENAS = Number(process.env.REEL_MAX_CENAS || "24");
 
 /**
  * Corpo da legenda queimada, em pixels do vídeo final.
@@ -58,6 +63,9 @@ const TETO_CLIPES = Number(process.env.REEL_MAX_CLIPES || "12");
  */
 const LEGENDA_CORPO = Number(process.env.REEL_LEGENDA_CORPO || "44");
 
+/** Estilo da legenda queimada, agora decidido aqui e não por um serviço pago. */
+const estiloLegenda = () => ({ corpo: LEGENDA_CORPO, fonte: "Poppins" });
+
 const gerarReelSchema = z.object({
   postId: idSchema,
   voz: z.enum(VOZES_PT_BR).optional(),
@@ -68,7 +76,7 @@ const porOrdem = (a: MidiaItem, b: MidiaItem) => (a.ordem ?? 0) - (b.ordem ?? 0)
 
 export type ResultadoReel = {
   videoUrl: string;
-  clipes: number;
+  cenas: number;
   duracaoSeg: number;
   custoEstimadoUsd: number;
   reaproveitados: number;
@@ -129,29 +137,32 @@ export async function gerarReel(entrada: unknown): Promise<ActionResult<Resultad
     }
 
     // ── 2. Linha do tempo ──────────────────────────────────────────
-    // Reconstruída das cenas quando elas existem: re-transcrever devolveria
-    // tempos ligeiramente diferentes e os clipes já prontos sairiam do lugar.
+    // Transcrição no nível de PALAVRA: ela serve a dois fins — recortar as
+    // cenas e cronometrar a legenda. É barata, então roda também na retomada;
+    // guardar palavra por palavra no banco pesaria mais do que o que custa
+    // pedir de novo.
+    const palavras = await transcrever(narracao.url, "word");
+
+    // Os blocos vêm das cenas quando elas existem: recalcular devolveria
+    // limites ligeiramente diferentes e as imagens já pagas sairiam do lugar.
     const cenasGravadas = midia.filter((m) => m.papel === "cena").sort(porOrdem);
-    let blocos: Bloco[];
+    const blocos: Bloco[] =
+      cenasGravadas.length > 0
+        ? cenasGravadas.map((c, i) => ({
+            ordem: c.ordem ?? i + 1,
+            inicioMs: c.inicioMs ?? 0,
+            duracaoMs: c.duracaoMs ?? SEGUNDOS_POR_CENA * 1000,
+            texto: c.texto ?? "",
+          }))
+        : blocosDaNarracao(palavras, SEGUNDOS_POR_CENA * 1000);
 
-    if (cenasGravadas.length > 0) {
-      blocos = cenasGravadas.map((c, i) => ({
-        ordem: c.ordem ?? i + 1,
-        inicioMs: c.inicioMs ?? 0,
-        duracaoMs: c.duracaoMs ?? SEGUNDOS_POR_CLIPE * 1000,
-        texto: c.texto ?? "",
-      }));
-    } else {
-      blocos = blocosDaNarracao(await transcrever(narracao.url), SEGUNDOS_POR_CLIPE * 1000);
-    }
-
-    const custoEstimadoUsd = Number((blocos.length * CUSTO_CLIPE_USD).toFixed(2));
-    if (blocos.length > TETO_CLIPES) {
+    const custoEstimadoUsd = Number((blocos.length * CUSTO_IMAGEM_USD).toFixed(2));
+    if (blocos.length > TETO_CENAS) {
       const seg = Math.round(
         blocos.reduce((a, b) => Math.max(a, b.inicioMs + b.duracaoMs), 0) / 1000,
       );
       throw new Error(
-        `A narração tem ${seg}s e exigiria ${blocos.length} clipes (~US$ ${custoEstimadoUsd}), acima do teto de ${TETO_CLIPES}. Encurte o roteiro ou aumente REEL_MAX_CLIPES no .env.`,
+        `A narração tem ${seg}s e exigiria ${blocos.length} cenas (~US$ ${custoEstimadoUsd}), acima do teto de ${TETO_CENAS}. Encurte o roteiro ou aumente REEL_MAX_CENAS no .env.`,
       );
     }
 
@@ -217,59 +228,38 @@ export async function gerarReel(entrada: unknown): Promise<ActionResult<Resultad
       reaproveitados += cenasGravadas.length;
     }
 
-    // ── 4. Clipes ──────────────────────────────────────────────────
-    // Em série e gravando a cada um: é a etapa cara. Em paralelo, uma falha
-    // no meio perderia os clipes já pagos que ainda não foram persistidos.
+    // ── 4. Montagem local ──────────────────────────────────────────
+    // Aqui estava a geração de um clipe image-to-video por cena: US$ 0,35 cada,
+    // ~90% da conta do vídeo, na camada que menos mudava o resultado. O
+    // movimento de câmera é feito agora pelo ffmpeg sobre a imagem fixa —
+    // custo zero, e para narração documental é a linguagem certa.
     const cenas = lista.filter((m) => m.papel === "cena").sort(porOrdem);
-    for (const cena of cenas) {
-      if (lista.some((m) => m.papel === "clipe" && m.ordem === cena.ordem)) {
-        reaproveitados++;
-        continue;
-      }
-      const clipe = await gerarVideo(cena.url, cena.promptUsado ?? "slow cinematic push-in");
-      lista = [
-        ...lista,
-        {
-          ...clipe,
-          papel: "clipe",
-          ordem: cena.ordem,
-          inicioMs: cena.inicioMs,
-          duracaoMs: cena.duracaoMs,
-          origemUrl: cena.url,
-        },
-      ];
-      await salvar(lista);
-    }
-
-    // ── 5. Montagem + legenda ──────────────────────────────────────
-    const clipes = lista.filter((m) => m.papel === "clipe").sort(porOrdem);
-    const duracaoTotalMs = clipes.reduce(
-      (a, c) => Math.max(a, (c.inicioMs ?? 0) + (c.duracaoMs ?? 0)),
-      0,
-    );
 
     let final = lista.find((m) => m.papel === "final");
     if (final) {
       reaproveitados++;
     } else {
-      // A montagem só é gravada DEPOIS da legenda. Compor é barato (ffmpeg) e
-      // gravar no meio criaria um estado em que a retomada pula a legenda e
-      // publica o vídeo mudo de texto — falha silenciosa, a pior espécie.
-      const montado = await montarVideo({
-        clipes: clipes.map((c) => ({
-          url: c.url,
-          inicioMs: c.inicioMs ?? 0,
-          duracaoMs: c.duracaoMs ?? SEGUNDOS_POR_CLIPE * 1000,
+      const montado = await montarVideoLocal({
+        cenas: cenas.map((c, i) => ({
+          ordem: c.ordem ?? i + 1,
+          imagemUrl: c.url,
+          duracaoMs: c.duracaoMs ?? SEGUNDOS_POR_CENA * 1000,
+          // Alternância determinística: a mesma lista monta igual duas vezes,
+          // então comparar duas montagens mede a sua mudança, não o sorteio.
+          movimento: movimentoPadrao(c.ordem ?? i + 1),
         })),
         audioUrl: narracao.url,
-        duracaoTotalMs,
+        legendas: agruparCues(palavras),
+        formato: "vertical",
+        estiloLegenda: estiloLegenda(),
+        chave: post.id,
       });
 
-      const legendado = await legendarVideo(montado.videoUrl, { corpo: LEGENDA_CORPO });
       final = {
         tipo: "video",
-        url: legendado.videoUrl,
+        url: montado.url,
         papel: "final",
+        duracaoMs: montado.duracaoSeg * 1000,
         criadoEm: new Date().toISOString(),
       };
       lista = [...lista, final];
@@ -303,8 +293,8 @@ export async function gerarReel(entrada: unknown): Promise<ActionResult<Resultad
 
     return {
       videoUrl: final.url,
-      clipes: clipes.length,
-      duracaoSeg: Math.round(duracaoTotalMs / 1000),
+      cenas: cenas.length,
+      duracaoSeg: Math.round((final.duracaoMs ?? 0) / 1000),
       custoEstimadoUsd,
       reaproveitados,
     };
@@ -400,38 +390,40 @@ export async function refazerLegenda(
 
     const midia = lerMidia(post.midiaPaths);
     const narracao = midia.find((m) => m.papel === "narracao");
-    const clipes = midia.filter((m) => m.papel === "clipe").sort(porOrdem);
+    const cenas = midia.filter((m) => m.papel === "cena").sort(porOrdem);
 
-    if (!narracao || clipes.length === 0) {
+    if (!narracao || cenas.length === 0) {
       throw new Error(
-        "As etapas do Reel não estão mais gravadas (narração e clipes). Gere o Reel novamente.",
+        "As etapas do Reel não estão mais gravadas (narração e cenas). Gere o Reel novamente.",
       );
     }
 
     const corpo = d.corpo ?? LEGENDA_CORPO;
-    const duracaoTotalMs = clipes.reduce(
-      (a, c) => Math.max(a, (c.inicioMs ?? 0) + (c.duracaoMs ?? 0)),
-      0,
-    );
 
-    const montado = await montarVideo({
-      clipes: clipes.map((c) => ({
-        url: c.url,
-        inicioMs: c.inicioMs ?? 0,
-        duracaoMs: c.duracaoMs ?? SEGUNDOS_POR_CLIPE * 1000,
+    // Remontar ficou grátis: a única chamada paga aqui é a transcrição, que
+    // custa frações de centavo. Antes isto exigia duas chamadas a serviços de
+    // vídeo; ajustar o tamanho da legenda não deveria custar nada.
+    const montado = await montarVideoLocal({
+      cenas: cenas.map((c, i) => ({
+        ordem: c.ordem ?? i + 1,
+        imagemUrl: c.url,
+        duracaoMs: c.duracaoMs ?? SEGUNDOS_POR_CENA * 1000,
+        movimento: movimentoPadrao(c.ordem ?? i + 1),
       })),
       audioUrl: narracao.url,
-      duracaoTotalMs,
+      legendas: agruparCues(await transcrever(narracao.url, "word")),
+      formato: "vertical",
+      estiloLegenda: { corpo, fonte: "Poppins" },
+      chave: `${post.id}-${corpo}`,
     });
-
-    const legendado = await legendarVideo(montado.videoUrl, { corpo });
 
     const lista: MidiaItem[] = [
       ...midia.filter((m) => m.papel !== "final"),
       {
         tipo: "video",
-        url: legendado.videoUrl,
+        url: montado.url,
         papel: "final",
+        duracaoMs: montado.duracaoSeg * 1000,
         criadoEm: new Date().toISOString(),
       },
     ];
@@ -442,7 +434,7 @@ export async function refazerLegenda(
     });
 
     revalidatePath("/producao");
-    return { videoUrl: legendado.videoUrl, corpo };
+    return { videoUrl: montado.url, corpo };
   });
 }
 

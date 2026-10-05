@@ -194,8 +194,8 @@ export function EditorPost({
   async function reel() {
     const retomando = cenasFeitas > 0 || clipesFeitos > 0;
     const aviso = retomando
-      ? `Retomando: ${cenasFeitas} cenas e ${clipesFeitos} clipes já prontos serão reaproveitados. Continuar?`
-      : "Gera narração, cenas, clipes, montagem e legenda. Leva alguns minutos e custa cerca de US$ 0,35 por 5 s de vídeo. Continuar?";
+      ? `Retomando: ${cenasFeitas} cenas já prontas serão reaproveitadas. Continuar?`
+      : "Gera narração, cenas e monta o vídeo aqui mesmo com legenda queimada. Custa cerca de US$ 0,03 por cena (uma cena a cada 6 s). Continuar?";
     if (!window.confirm(aviso)) return;
 
     if (!(await garantirSalvo())) return;
@@ -205,9 +205,9 @@ export function EditorPost({
       aoConcluir: aoAtualizar,
     });
     if (r && typeof r === "object" && "videoUrl" in r) {
-      const d = r as { clipes: number; duracaoSeg: number; custoEstimadoUsd: number };
+      const d = r as { cenas: number; duracaoSeg: number; custoEstimadoUsd: number };
       toast.success(
-        `Reel pronto: ${d.duracaoSeg}s, ${d.clipes} cortes, narrado e legendado (~US$ ${d.custoEstimadoUsd}).`,
+        `Reel pronto: ${d.duracaoSeg}s, ${d.cenas} cortes, narrado e legendado (~US$ ${d.custoEstimadoUsd}).`,
       );
     }
   }
@@ -754,7 +754,7 @@ export function EditorPost({
                   Refazer legenda
                 </Botao>
                 <span className="text-[10px] text-tenue">
-                  remonta e relegenda sem gerar clipe novo — nenhuma chamada paga de vídeo
+                  remonta aqui mesmo, de graça — a montagem não passa mais por serviço pago
                 </span>
               </div>
             ) : clipesFeitos > 0 || cenasFeitas > 0 ? (

@@ -224,6 +224,39 @@ o resto decorativo, que é uma capa com anexos.
 > para o dashboard **e** para a automação. O `docker-compose` repassa
 > `FAL_MODEL_IMAGEM` e `FAL_MODEL_VIDEO` ao n8n.
 
+### Montagem local — por que o vídeo generativo saiu do caminho
+
+A primeira versão gerava um clipe image-to-video por cena: **US$ 0,35 cada,
+US$ 4,20 por minuto de vídeo**, quase toda a conta. Era também a camada que
+menos mudava o resultado — e a que foi descrita como genérica ao ser assistida.
+
+Hoje a cena é uma **imagem fixa com movimento de câmera feito pelo ffmpeg**
+(`zoompan`), montada aqui mesmo. A diferença:
+
+| | antes (image-to-video) | agora (stills + ffmpeg) |
+| --- | --- | --- |
+| por minuto de vídeo | ~US$ 4,20 | ~US$ 0,30 |
+| vídeo de 10 min | ~US$ 42 | ~US$ 3 |
+| montagem e legenda | dois serviços pagos | local, grátis |
+
+Para narração documental isso fica **melhor**, não pior: foto bem composta com
+panorâmica lenta é a linguagem do gênero; clipe de IA de 5 segundos é a
+linguagem de quem automatizou. O gerativo não saiu de cena — fica reservado
+para poucos momentos de impacto, onde o movimento real vale o preço.
+
+**Requisito novo: `ffmpeg` instalado.** `sudo apt install ffmpeg` no
+Ubuntu/Debian, `brew install ffmpeg` no macOS. Sem ele a montagem recusa com a
+mensagem dizendo isso.
+
+**Tempo de render.** As cenas são renderizadas em paralelo, uma por núcleo
+(teto de 6). Medido em 2 núcleos: 42 s de vídeo em 60 s de render. Numa máquina
+de 8 threads fica bem abaixo do tempo real.
+
+**Legenda em ASS/libass**, não mais num serviço: fonte própria — a mesma
+Poppins da capa, então o post inteiro fala a mesma tipografia —, contorno,
+posição exata e quebra em 2 a 4 palavras por tela, cronometrada pela
+transcrição no nível de palavra.
+
 ### Reel — um clique, vídeo narrado e legendado
 
 `Reel` no editor encadeia, tudo dentro do fal.ai com a mesma `FAL_KEY`:
@@ -235,9 +268,9 @@ o resto decorativo, que é uma capa com anexos.
 3. **Cenas** — a IA quebra o roteiro em uma cena de b-roll por bloco de fala,
    com direção visual comum. Um plano único de 40 s é o que o espectador
    abandona aos cinco segundos; corte é o que sustenta retenção sem rosto.
-4. **Clipes** (`FAL_MODEL_VIDEO`, Kling) — um por cena, a partir da imagem dela.
-5. **Montagem** (`fal-ai/ffmpeg-api/compose`) — clipes na linha do tempo + voz.
-6. **Legenda queimada** (`fal-ai/auto-caption`) — a maioria assiste sem som.
+4. **Montagem local** (ffmpeg) — cada imagem ganha movimento de câmera, as
+   cenas são emendadas e a voz entra por cima.
+5. **Legenda queimada** (ASS/libass) — a maioria assiste sem som.
 7. **Capa** sobre a primeira cena, publicada como `cover_url` do Reel.
 
 **É retomável.** Cada etapa grava o que produziu em `midia_paths` com um
