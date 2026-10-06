@@ -38,3 +38,7 @@ yarn-error.log*
 .vscode/*
 !.vscode/extensions.json
 .idea
+
+# Python (os scripts de montagem)
+__pycache__/
+*.pyc

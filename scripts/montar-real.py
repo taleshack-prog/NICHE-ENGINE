@@ -188,9 +188,15 @@ def escolher_banco() -> tuple[str, str]:
     )
 
 
+# O urllib se identifica como "Python-urllib/3.x", e o WAF na frente do Pixabay
+# recusa isso com 403 antes de sequer olhar a chave. Um User-Agent honesto
+# resolve — e identificar quem está chamando é o certo de qualquer forma.
+AGENTE = "NicheEngine/1.0 (+https://hacktechfarm.com.br)"
+
+
 def baixar(url: str, destino: Path, cabecalhos: dict[str, str] | None = None) -> None:
     destino.parent.mkdir(parents=True, exist_ok=True)
-    req = urllib.request.Request(url, headers=cabecalhos or {})
+    req = urllib.request.Request(url, headers={"User-Agent": AGENTE, **(cabecalhos or {})})
     with urllib.request.urlopen(req, timeout=180) as resp, open(destino, "wb") as f:
         shutil.copyfileobj(resp, f)
 
@@ -199,13 +205,29 @@ def baixar(url: str, destino: Path, cabecalhos: dict[str, str] | None = None) ->
 
 
 def _json(url: str, cabecalhos: dict[str, str] | None = None, banco: str = "") -> dict:
-    req = urllib.request.Request(url, headers=cabecalhos or {})
+    req = urllib.request.Request(url, headers={"User-Agent": AGENTE, **(cabecalhos or {})})
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
             return json.load(resp)
     except urllib.error.HTTPError as e:
         if e.code in (400, 401, 403, 429):
-            sys.exit(f"{banco} recusou a requisição (HTTP {e.code}). Confira a chave no .env.")
+            # O corpo da resposta é onde está o diagnóstico de verdade: o
+            # Pixabay devolve coisas como [ERROR 400] "key" is invalid.
+            # Engolir isso e dizer "confira a chave" transforma um erro
+            # explícito em adivinhação.
+            try:
+                corpo = e.read().decode("utf-8", "replace").strip()[:300]
+            except Exception:
+                corpo = ""
+            dica = {
+                400: "chave ausente, inválida ou com espaço sobrando",
+                401: "chave não reconhecida",
+                403: "bloqueio do servidor — chave inválida, conta ainda não "
+                     "confirmada por e-mail, ou requisição recusada antes de chegar à API",
+                429: "limite de requisições atingido; espere um minuto",
+            }[e.code]
+            sys.exit(f"{banco}: HTTP {e.code} — {dica}."
+                     + (f"\nresposta do servidor: {corpo}" if corpo else ""))
         raise
 
 
@@ -368,7 +390,19 @@ def main() -> None:
     ap.add_argument("--trocar", action="append", default=[], metavar="PLANO=INDICE",
                     help="usa outro candidato naquele plano, ex: --trocar 3=1")
     ap.add_argument("--saida", default=str(Path.home() / "Downloads/dogue-real.mp4"))
+    ap.add_argument("--testar-chave", action="store_true",
+                    help="só confere se a credencial passa, sem montar nada")
     args = ap.parse_args()
+
+    if args.testar_chave:
+        banco, chave = escolher_banco()
+        print(f"banco: {banco}  chave: {chave[:4]}…{chave[-4:]} ({len(chave)} caracteres)")
+        achados = buscar("dog", chave, banco)
+        print(f"OK — {len(achados)} resultados para 'dog'.")
+        for c in achados[:3]:
+            orient = "vertical" if c.retrato else "horizontal"
+            print(f"  {c.largura}x{c.altura} {orient}  {c.autor}  {c.pagina}")
+        return
 
     escolhas: dict[int, int] = {}
     for t in args.trocar:
