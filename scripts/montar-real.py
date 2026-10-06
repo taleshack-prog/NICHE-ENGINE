@@ -461,6 +461,7 @@ def main() -> None:
         # ── 2. Um clipe real por plano ──
         print(f"buscando {len(planos)} clipes ({banco})…")
         pedacos, creditos, cues = [], [], []
+        usados: set[str] = set()
         for n, (plano, ini, dur) in enumerate(planos, start=1):
             cues.append((ini, ini + dur, plano.linha))
             resultados = buscar(plano.busca, chave, banco)
@@ -471,7 +472,15 @@ def main() -> None:
             if idx >= len(resultados):
                 sys.exit(f"plano {n}: só há {len(resultados)} candidatos, "
                          f"índices 0 a {len(resultados) - 1}.")
-            cand = resultados[idx]
+            # Buscas vizinhas ("great dane close up" e "old dog close up")
+            # devolvem o mesmo clipe, e repetir a mesma imagem com poucos
+            # segundos de distância é das coisas que o olho pega primeiro.
+            # Escolha explícita do --trocar manda; fora isso, pula o repetido.
+            if n in escolhas:
+                cand = resultados[idx]
+            else:
+                cand = next((c for c in resultados if c.ident not in usados), resultados[0])
+            usados.add(cand.ident)
             origem = obter_clipe(cand)
             corte = tmp / f"plano-{n:02d}.mp4"
             recortar(origem, corte, dur, cand.retrato)
