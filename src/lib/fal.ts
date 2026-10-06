@@ -82,28 +82,53 @@ export const SEGUNDOS_POR_CLIPE = 5;
 export const CUSTO_CLIPE_USD = Number(process.env.FAL_CUSTO_CLIPE_USD || "0.35");
 
 /**
- * Preço de uma imagem no modelo padrão (FLUX dev).
+ * Resolução pedida ao FLUX, por formato de saída.
  *
- * É a unidade de custo do vídeo depois que a montagem passou para o ffmpeg
- * local: uma cena agora é uma imagem, não um clipe. Duas ordens de grandeza
- * de diferença — US$ 0,03 contra US$ 0,35 — e é por isso que a conta por
- * minuto caiu de US$ 4,20 para centavos.
+ * POR QUE NÃO OS PRESETS DO FAL: `portrait_16_9` devolve 576x1024 — verificado
+ * chamando o modelo, não lendo a documentação. O vídeo é montado em 1080x1920,
+ * então aquela imagem subia 2,8x na escala; é exatamente a papa borrada que o
+ * usuário viu e chamou de "fotos estáticas e distorcidas". Pedindo a dimensão
+ * explícita, o modelo devolve 1072x1920 e a imagem entra na linha do tempo em
+ * escala 1:1.
+ *
+ * (1072 e não 1080 porque o FLUX arredonda a largura para múltiplo de 16. A
+ * montagem já faz scale+crop, então os 8 px somem no corte, não na distorção.)
  */
-export const CUSTO_IMAGEM_USD = Number(process.env.FAL_CUSTO_IMAGEM_USD || "0.03");
+export const RESOLUCOES = {
+  reel: { width: 1080, height: 1920 },
+  feed: { width: 1080, height: 1350 },
+  quadrado: { width: 1080, height: 1080 },
+} as const;
+export type FormatoImagem = keyof typeof RESOLUCOES;
+
+/**
+ * Preço do FLUX dev: US$ 0,025 por megapixel — por MEGAPIXEL, não por imagem.
+ * Confirmado na tabela do fal em 05/10/2026.
+ *
+ * Estava fixo em US$ 0,03 aqui, o que subestimava o Reel em ~70%: a imagem de
+ * 1080x1920 tem 2,07 MP e sai por US$ 0,052. Número que o usuário vê antes de
+ * apertar o botão não pode ser chute.
+ */
+export const CUSTO_MEGAPIXEL_USD = Number(process.env.FAL_CUSTO_MEGAPIXEL_USD || "0.025");
+
+export function custoImagemUsd(formato: FormatoImagem): number {
+  const { width, height } = RESOLUCOES[formato];
+  return ((width * height) / 1_000_000) * CUSTO_MEGAPIXEL_USD;
+}
 
 type FalImagemResposta = { images?: Array<{ url?: string }> };
 
 /** Geração síncrona de imagens (FLUX). Retorna itens prontos para midiaPaths. */
 export async function gerarImagens(
   prompt: string,
-  opts: { quantidade?: number; aspecto?: "square_hd" | "portrait_4_3" | "portrait_16_9" } = {},
+  opts: { quantidade?: number; formato?: FormatoImagem } = {},
 ): Promise<MidiaItem[]> {
   const res = await fetch(`https://fal.run/${MODELO_IMAGEM()}`, {
     method: "POST",
     headers: headers(),
     body: JSON.stringify({
       prompt,
-      image_size: opts.aspecto ?? "portrait_16_9",
+      image_size: RESOLUCOES[opts.formato ?? "reel"],
       num_images: opts.quantidade ?? 3,
     }),
   });

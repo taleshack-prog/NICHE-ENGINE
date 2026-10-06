@@ -25,7 +25,11 @@ PAUSA_MS = 420
 # Um clipe por cena, na ordem do roteiro.
 CLIPES = [
     "https://v3b.fal.media/files/b/0aad3aa7/qSbkHi3UPZnQvsiGk0t4e_output.mp4",
-    "https://v3b.fal.media/files/b/0aad3a75/WhHdMf1YfNUNz62A6hI9z_output.mp4",
+    # Cena 2 refeita: a primeira versão tinha três patas traseiras, e o Kling
+    # amplificou o defeito ao animar as pernas. Nesta, o prompt proíbe
+    # movimento de membro — só câmera e respiração — e a imagem de partida tem
+    # as patas recolhidas, sem sobreposição para a IA duplicar.
+    "https://v3b.fal.media/files/b/0aad3af6/Q3b83KOd_MRi_bBtYUmAR_output.mp4",
     "https://v3b.fal.media/files/b/0aad3a75/-6EcqRG2w-qNE0_Hfy0vb_output.mp4",
     "https://v3b.fal.media/files/b/0aad3a6b/kzBkKvMVzWPd7_jiaGUh1_output.mp4",
 ]

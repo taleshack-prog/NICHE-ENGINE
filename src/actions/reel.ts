@@ -6,7 +6,7 @@ import { callClaudeStructured, iaDisponivel } from "@/lib/ai";
 import { aplicarCapa, formatoValido, renderizarCapa } from "@/lib/capa";
 import { prisma } from "@/lib/db";
 import {
-  CUSTO_IMAGEM_USD,
+  custoImagemUsd,
   RESTRICOES_VISUAIS,
   VOZES_PT_BR,
   falDisponivel,
@@ -275,7 +275,7 @@ export async function gerarReel(entrada: unknown): Promise<ActionResult<Resultad
           }))
         : blocosDaNarracao(palavras, SEGUNDOS_POR_CENA * 1000);
 
-    const custoEstimadoUsd = Number((blocos.length * CUSTO_IMAGEM_USD).toFixed(2));
+    const custoEstimadoUsd = Number((blocos.length * custoImagemUsd("reel")).toFixed(2));
     if (blocos.length > TETO_CENAS) {
       const seg = Math.round(
         blocos.reduce((a, b) => Math.max(a, b.inicioMs + b.duracaoMs), 0) / 1000,
@@ -320,7 +320,7 @@ export async function gerarReel(entrada: unknown): Promise<ActionResult<Resultad
           ]
             .filter(Boolean)
             .join(". ");
-          return gerarImagens(prompt, { quantidade: 1, aspecto: "portrait_16_9" }).then(
+          return gerarImagens(prompt, { quantidade: 1, formato: "reel" }).then(
             ([img]): MidiaItem => ({
               tipo: "imagem",
               url: img?.url ?? "",

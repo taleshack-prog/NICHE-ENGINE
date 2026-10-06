@@ -134,7 +134,7 @@ export async function gerarCarrossel(
       plano.slides.map((s) =>
         gerarImagens(`${s.promptVisual}. ${plano.direcaoVisual}. ${RESTRICOES_VISUAIS}`, {
           quantidade: 1,
-          aspecto: "portrait_4_3",
+          formato: "feed",
         }),
       ),
     );
@@ -220,9 +220,9 @@ export async function gerarMidia(
         promptVisualDeRoteiro(post.titulo, post.roteiro ?? post.titulo);
       novos = await gerarImagens(prompt, {
         quantidade: d.quantidade ?? (post.formato === "carrossel" ? 5 : 3),
-        // 3:4 para feed (recortado depois para 1080×1350) e 9:16 para Reel.
-        // Pedir square_hd para carrossel obrigava a capa a cortar as laterais.
-        aspecto: post.formato === "reel" ? "portrait_16_9" : "portrait_4_3",
+        // Já na resolução final do destino: 1080×1920 no Reel, 1080×1350 no
+        // feed. Pedir quadrado obrigava a capa a cortar as laterais.
+        formato: post.formato === "reel" ? "reel" : "feed",
       });
     } else {
       // Kling é image-to-video: precisa de um frame de partida.
