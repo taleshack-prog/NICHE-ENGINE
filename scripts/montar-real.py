@@ -73,6 +73,14 @@ class Plano:
     exigir: tuple[str, ...] = ("dog",)
     #: Busca mais larga para quando a principal não sobrar nada após a trava.
     reserva: str = "dog"
+    #: Palavras que fazem o candidato SUBIR na lista, sem eliminar quem não tem.
+    #:
+    #: É aqui que mora a empatia. O Pixabay ignora os modificadores da busca
+    #: ("dog lap" e "dog hug" devolvem o mesmo cachorro bebendo água), então
+    #: não adianta pedir a cena: pede-se "dog" e escolhe-se, entre o que
+    #: voltou, o clipe que tem gente junto. Cachorro sozinho em parque informa;
+    #: cachorro com uma pessoa é o que faz alguém parar de rolar a tela.
+    preferir: tuple[str, ...] = ()
 
 
 @dataclass
@@ -86,6 +94,10 @@ class Candidato:
     largura: int
     altura: int
     tags: str = ""
+
+    def pontua(self, preferir: tuple[str, ...]) -> int:
+        texto = f"{self.tags} {self.pagina}".lower()
+        return sum(1 for p in preferir if p in texto)
 
     def combina(self, exigir: tuple[str, ...]) -> bool:
         # O Pexels não devolve tags, mas o endereço da página traz o título em
@@ -108,45 +120,49 @@ class Candidato:
 # E quase todas pedem UMA PESSOA no quadro — é o que estava faltando.
 CAO = ("dog", "puppy", "canine", "pet", "retriever", "labrador", "dane")
 
+#: Marcas de presença humana nas tags. Não eliminam ninguém — só puxam para
+#: cima. Ver Plano.preferir para o porquê.
+GENTE = ("owner", "man", "woman", "human", "boy", "girl", "child", "kid",
+         "people", "person", "hand", "family", "walk", "neighbours")
+
 BLOCOS: list[tuple[str, list[Plano]]] = [
     (
         "https://v3b.fal.media/files/b/0aad3a7a/eynjXcrPeF3H-M_6jM1fg_kp6PKjuE.wav",
         [
-            Plano("Esse cachorro vai pesar", "great dane", CAO, "big dog"),
-            Plano("mais que você", "dog paw", CAO, "dog"),
+            Plano("Esse cachorro vai pesar", "big dog", CAO, "dog"),
+            Plano("mais que você", "dog paws", CAO, "dog", GENTE),
         ],
     ),
     (
         "https://v3b.fal.media/files/b/0aad3a7b/q4zuZogAwVNbj_cFdqeyo_DTZC23II.wav",
         [
             Plano("E vai continuar achando", "dog sofa", CAO, "dog home"),
-            Plano("que cabe no seu colo", "dog lap", CAO, "dog owner"),
+            Plano("que cabe no seu colo", "dog owner", CAO, "dog", GENTE),
         ],
     ),
     (
         "https://v3b.fal.media/files/b/0aad3a61/5E9SjtFUuPhuXLCxB-d7g_jAqR4p0x.wav",
         [
             Plano("O dogue alemão vive", "dog portrait", CAO, "dog"),
-            Plano("de sete a dez anos", "old dog", CAO, "dog face"),
+            Plano("de sete a dez anos", "old dog walk", CAO, "old dog", GENTE),
             Plano("Um labrador chega aos doze", "labrador", CAO, "dog running"),
         ],
     ),
     (
         "https://v3b.fal.media/files/b/0aad3a61/DTgD43MkVNtKtWUbXBIUh_8aE36WEq.wav",
         [
-            Plano("Quem escolhe um gigante", "dog hug", CAO, "dog owner"),
-            Plano("sabe o preço", "petting dog", CAO, "dog hand"),
-            Plano("amor grande, tempo curto", "dog owner", CAO, "dog love"),
+            Plano("Quem escolhe um gigante", "dog man", CAO, "dog owner", GENTE),
+            Plano("sabe o preço", "dog hand", CAO, "petting dog", GENTE),
+            Plano("amor grande, tempo curto", "dog woman", CAO, "dog owner", GENTE),
         ],
     ),
     (
         "https://v3b.fal.media/files/b/0aad3a62/qUGkdULNuFNbhh0h5HmbI_CTvXuT5g.wav",
         [
-            Plano("Salva, se você ama um deles", "dog face", CAO, "dog"),
+            Plano("Salva, se você ama um deles", "boy dog", CAO, "dog face", GENTE),
         ],
     ),
 ]
-
 
 # ─────────────────────────── utilitários ───────────────────────────
 
@@ -315,6 +331,8 @@ def buscar(plano: Plano, chave: str, banco: str = "") -> list[Candidato]:
     for termo in (plano.busca, plano.reserva):
         achados = [c for c in motor(termo, chave) if c.combina(plano.exigir)]
         if achados:
+            # Ordem estável: mais pessoas primeiro, vertical desempata.
+            achados.sort(key=lambda c: (-c.pontua(plano.preferir), 0 if c.retrato else 1))
             return achados
     return []
 
@@ -455,7 +473,8 @@ def main() -> None:
                       f"{len(achados)} candidatos")
                 for i, c in enumerate(achados[:4]):
                     marca = "<-" if c is esc else "  "
-                    print(f"    {marca} {i}: {c.tags[:60] or '(sem tags)'}")
+                    gente = "GENTE" if c.pontua(plano.preferir) else "  só cão"
+                    print(f"    {marca} {i}: [{gente}] {c.tags[:52] or '(sem tags)'}")
                     print(f"       {c.pagina}")
         return
 
