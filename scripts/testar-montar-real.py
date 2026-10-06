@@ -89,3 +89,19 @@ assert all("dog" in c.tags for c in achados), "passou clipe sem cachorro"
 assert len(achados) == 3, f"esperava 3 relevantes de 6, veio {len(achados)}"
 print("trava de relevancia: 3 de 6 passaram, nenhum sem cachorro")
 print("OK")
+
+# --- casos vindos da conferencia real de 06/10 ---
+def c(tags):
+    return mr.Candidato("x", "https://pixabay.com/videos/id-1/", "a", "u", 1920, 1080, tags)
+
+# "german" NAO pode valer como "man"
+assert c("dog, brown, pet, animal, german shorthaired pointer, snow").pontua(mr.GENTE) == 0, \
+    "german voltou a casar com man"
+# gato e cavalo nao sao cachorro, mesmo marcados como pet/animal
+assert not c("cat, kitty, pet, park, cute, woman, owner, animal").combina(mr.CAO), "gato passou"
+assert not c("nature, horse, horses, animals, equine, mare, rural, pet").combina(mr.CAO), "cavalo passou"
+# e o que e gente de verdade continua pontuando
+assert c("dogs, neighbours, street, to walk, city, old man, old woman").pontua(mr.GENTE) == 3
+assert c("woman, dogs, pets, friends, fun, family").pontua(mr.GENTE) == 3
+assert c("boy, child, kid, face, animal, happy, chihuahua, dog").pontua(mr.GENTE) == 3
+print("palavra inteira: german nao e man; gato e cavalo barrados; gente real pontua")

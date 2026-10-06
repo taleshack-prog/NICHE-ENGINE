@@ -95,15 +95,24 @@ class Candidato:
     altura: int
     tags: str = ""
 
+    def palavras(self) -> set[str]:
+        """
+        Tags e endereço quebrados em PALAVRAS INTEIRAS.
+
+        Comparar por substring marcou "german shorthaired pointer" como clipe
+        com gente, porque "ger-man" contém "man". Uma letra fora do lugar e a
+        trava mente.
+
+        O Pexels não devolve tags, mas o endereço traz o título em slug
+        ("/video/dog-running-on-beach-1234/"), que quebra igual.
+        """
+        return set(re.findall(r"[a-z]+", f"{self.tags} {self.pagina}".lower()))
+
     def pontua(self, preferir: tuple[str, ...]) -> int:
-        texto = f"{self.tags} {self.pagina}".lower()
-        return sum(1 for p in preferir if p in texto)
+        return len(self.palavras() & set(preferir))
 
     def combina(self, exigir: tuple[str, ...]) -> bool:
-        # O Pexels não devolve tags, mas o endereço da página traz o título em
-        # formato de slug ("/video/dog-running-on-beach-1234/"), que serve.
-        texto = f"{self.tags} {self.pagina}".lower()
-        return any(p in texto for p in exigir)
+        return bool(self.palavras() & set(exigir))
 
     @property
     def retrato(self) -> bool:
@@ -118,12 +127,19 @@ class Candidato:
 #
 # As buscas estão em inglês de propósito: é onde o acervo do Pexels é grande.
 # E quase todas pedem UMA PESSOA no quadro — é o que estava faltando.
-CAO = ("dog", "puppy", "canine", "pet", "retriever", "labrador", "dane")
+#: Palavras de CACHORRO. Específicas de propósito: "pet" e "animal" deixaram
+#: passar gato e cavalo na conferência de 06/10 — num acervo de bichos, tag
+#: genérica não identifica espécie nenhuma.
+CAO = ("dog", "dogs", "puppy", "puppies", "canine", "retriever", "labrador",
+       "dane", "hound", "terrier", "collie", "husky", "spitz", "chihuahua",
+       "corgi", "poodle", "beagle", "shepherd")
 
 #: Marcas de presença humana nas tags. Não eliminam ninguém — só puxam para
 #: cima. Ver Plano.preferir para o porquê.
-GENTE = ("owner", "man", "woman", "human", "boy", "girl", "child", "kid",
-         "people", "person", "hand", "family", "walk", "neighbours")
+GENTE = ("owner", "owners", "man", "men", "woman", "women", "human", "humans",
+         "boy", "girl", "child", "children", "kid", "kids", "people", "person",
+         "hand", "hands", "family", "friends", "couple", "lady", "guy",
+         "neighbours", "neighbors")
 
 BLOCOS: list[tuple[str, list[Plano]]] = [
     (
