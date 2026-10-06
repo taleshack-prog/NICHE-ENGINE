@@ -51,15 +51,17 @@ mr.BLOCOS = [(f"fake-{i}.wav", lista) for i, (_, lista) in enumerate(mr.BLOCOS)]
 # caminhos de enquadramento: preenchimento por recorte e composicao com fundo.
 FORMATOS = [(1080, 1920), (1920, 1080), (720, 1280)]
 
-def buscar_falso(termo, chave, banco=""):
+def motor_falso(termo, chave):
+    """Metade dos retornos é irrelevante de proposito: a trava tem que barrar."""
     saida = []
-    for i in range(5):
+    for i in range(6):
         w, h = FORMATOS[i % 3]
+        tags = "dog, pet, animal" if i % 2 == 0 else "woman, lipstick, wave"
         saida.append(mr.Candidato(str(i % 3), f"https://banco.test/{i}",
-                                  f"Autor {i}", "x", w, h))
+                                  f"Autor {i}", "x", w, h, tags))
     return saida
 
-mr.buscar = buscar_falso
+mr.buscar_pixabay = motor_falso
 mr.obter_clipe = lambda cand: clipes[int(cand.ident)]
 mr.escolher_banco = lambda: ("pixabay", "falsa")
 
@@ -80,4 +82,10 @@ print(f"duração esperada {esperado}ms / obtida {dur}ms / erro {abs(dur - esper
 assert abs(dur - esperado) < 400, "linha do tempo fora do esperado"
 assert '"width": 1080' in probe and '"height": 1920' in probe, "formato errado"
 assert probe.count('"codec_type"') == 2, "faltou trilha de áudio ou de vídeo"
+# a trava de relevancia tem que ter barrado tudo que nao e cachorro
+achados = mr.buscar(mr.Plano("x", "great dane"), "falsa", "pixabay")
+assert achados, "a trava barrou tudo"
+assert all("dog" in c.tags for c in achados), "passou clipe sem cachorro"
+assert len(achados) == 3, f"esperava 3 relevantes de 6, veio {len(achados)}"
+print("trava de relevancia: 3 de 6 passaram, nenhum sem cachorro")
 print("OK")

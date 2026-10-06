@@ -64,6 +64,15 @@ class Plano:
 
     linha: str
     busca: str
+    #: Clipe só serve se tiver UMA destas palavras nas tags. É a trava contra o
+    #: que aconteceu na primeira montagem: "great dane standing beside woman
+    #: full body" casou com "woman"/"body" e trouxe uma mulher malhando; "dog
+    #: looking into camera close up eyes" casou com "eyes" e trouxe um batom.
+    #: A busca do Pixabay quebra a frase em palavras soltas e casa com qualquer
+    #: uma — então a relevância tem que ser conferida aqui, não pedida lá.
+    exigir: tuple[str, ...] = ("dog",)
+    #: Busca mais larga para quando a principal não sobrar nada após a trava.
+    reserva: str = "dog"
 
 
 @dataclass
@@ -76,6 +85,13 @@ class Candidato:
     link: str
     largura: int
     altura: int
+    tags: str = ""
+
+    def combina(self, exigir: tuple[str, ...]) -> bool:
+        # O Pexels não devolve tags, mas o endereço da página traz o título em
+        # formato de slug ("/video/dog-running-on-beach-1234/"), que serve.
+        texto = f"{self.tags} {self.pagina}".lower()
+        return any(p in texto for p in exigir)
 
     @property
     def retrato(self) -> bool:
@@ -90,41 +106,43 @@ class Candidato:
 #
 # As buscas estão em inglês de propósito: é onde o acervo do Pexels é grande.
 # E quase todas pedem UMA PESSOA no quadro — é o que estava faltando.
+CAO = ("dog", "puppy", "canine", "pet", "retriever", "labrador", "dane")
+
 BLOCOS: list[tuple[str, list[Plano]]] = [
     (
         "https://v3b.fal.media/files/b/0aad3a7a/eynjXcrPeF3H-M_6jM1fg_kp6PKjuE.wav",
         [
-            Plano("Esse cachorro vai pesar", "great dane standing beside woman full body"),
-            Plano("mais que você", "large dog paw in human hand close up"),
+            Plano("Esse cachorro vai pesar", "great dane", CAO, "big dog"),
+            Plano("mais que você", "dog paw", CAO, "dog"),
         ],
     ),
     (
         "https://v3b.fal.media/files/b/0aad3a7b/q4zuZogAwVNbj_cFdqeyo_DTZC23II.wav",
         [
-            Plano("E vai continuar achando", "big dog climbing onto owner lap sofa"),
-            Plano("que cabe no seu colo", "huge dog lying on woman lap couch"),
+            Plano("E vai continuar achando", "dog sofa", CAO, "dog home"),
+            Plano("que cabe no seu colo", "dog lap", CAO, "dog owner"),
         ],
     ),
     (
         "https://v3b.fal.media/files/b/0aad3a61/5E9SjtFUuPhuXLCxB-d7g_jAqR4p0x.wav",
         [
-            Plano("O dogue alemão vive", "great dane close up portrait slow motion"),
-            Plano("de sete a dez anos", "old dog grey muzzle close up eyes"),
-            Plano("Um labrador chega aos doze", "labrador running happy grass slow motion"),
+            Plano("O dogue alemão vive", "dog portrait", CAO, "dog"),
+            Plano("de sete a dez anos", "old dog", CAO, "dog face"),
+            Plano("Um labrador chega aos doze", "labrador", CAO, "dog running"),
         ],
     ),
     (
         "https://v3b.fal.media/files/b/0aad3a61/DTgD43MkVNtKtWUbXBIUh_8aE36WEq.wav",
         [
-            Plano("Quem escolhe um gigante", "woman hugging large dog tight"),
-            Plano("sabe o preço", "person petting big dog head slowly"),
-            Plano("amor grande, tempo curto", "dog resting head on owner knee"),
+            Plano("Quem escolhe um gigante", "dog hug", CAO, "dog owner"),
+            Plano("sabe o preço", "petting dog", CAO, "dog hand"),
+            Plano("amor grande, tempo curto", "dog owner", CAO, "dog love"),
         ],
     ),
     (
         "https://v3b.fal.media/files/b/0aad3a62/qUGkdULNuFNbhh0h5HmbI_CTvXuT5g.wav",
         [
-            Plano("Salva, se você ama um deles", "dog looking into camera close up eyes"),
+            Plano("Salva, se você ama um deles", "dog face", CAO, "dog"),
         ],
     ),
 ]
@@ -282,13 +300,23 @@ def buscar_pixabay(termo: str, chave: str) -> list[Candidato]:
                           for v in h.get("videos", {}).values()])
         if melhor:
             saida.append(Candidato(str(h["id"]), h.get("pageURL", ""),
-                                   h.get("user", "?"), *melhor))
+                                   h.get("user", "?"), *melhor, tags=h.get("tags", "")))
     saida.sort(key=lambda c: 0 if c.retrato else 1)
     return saida
 
 
-def buscar(termo: str, chave: str, banco: str = "") -> list[Candidato]:
-    return (buscar_pexels if banco == "pexels" else buscar_pixabay)(termo, chave)
+def buscar(plano: Plano, chave: str, banco: str = "") -> list[Candidato]:
+    """
+    Busca, e só devolve o que PASSA NA TRAVA DE RELEVÂNCIA. Um clipe sem
+    cachorro nas tags não é um candidato ruim, é um candidato errado: entregar
+    uma mulher malhando numa peça sobre dogue alemão não é questão de gosto.
+    """
+    motor = buscar_pexels if banco == "pexels" else buscar_pixabay
+    for termo in (plano.busca, plano.reserva):
+        achados = [c for c in motor(termo, chave) if c.combina(plano.exigir)]
+        if achados:
+            return achados
+    return []
 
 
 def obter_clipe(cand: Candidato) -> Path:
@@ -390,6 +418,8 @@ def main() -> None:
     ap.add_argument("--trocar", action="append", default=[], metavar="PLANO=INDICE",
                     help="usa outro candidato naquele plano, ex: --trocar 3=1")
     ap.add_argument("--saida", default=str(Path.home() / "Downloads/dogue-real.mp4"))
+    ap.add_argument("--conferir", action="store_true",
+                    help="mostra o que cada busca traz, sem baixar nem montar")
     ap.add_argument("--testar-chave", action="store_true",
                     help="só confere se a credencial passa, sem montar nada")
     args = ap.parse_args()
@@ -397,11 +427,36 @@ def main() -> None:
     if args.testar_chave:
         banco, chave = escolher_banco()
         print(f"banco: {banco}  chave: {chave[:4]}…{chave[-4:]} ({len(chave)} caracteres)")
-        achados = buscar("dog", chave, banco)
+        achados = buscar(Plano("teste", "dog"), chave, banco)
         print(f"OK — {len(achados)} resultados para 'dog'.")
         for c in achados[:3]:
             orient = "vertical" if c.retrato else "horizontal"
             print(f"  {c.largura}x{c.altura} {orient}  {c.autor}  {c.pagina}")
+        return
+
+    if args.conferir:
+        # Conferir é de graça; montar e assistir custa o seu tempo. Depois de
+        # entregar uma peça com uma mulher malhando e um batom numa narração
+        # sobre dogue alemão, este passo vem antes, não depois.
+        banco, chave = escolher_banco()
+        usados: set[str] = set()
+        n = 0
+        for _, lista in BLOCOS:
+            for plano in lista:
+                n += 1
+                achados = buscar(plano, chave, banco)
+                if not achados:
+                    print(f"{n:2d}. {plano.linha}\n    NADA passou na trava "
+                          f"({plano.busca!r} / {plano.reserva!r})")
+                    continue
+                esc = next((c for c in achados if c.ident not in usados), achados[0])
+                usados.add(esc.ident)
+                print(f"{n:2d}. {plano.linha}   [{plano.busca}] "
+                      f"{len(achados)} candidatos")
+                for i, c in enumerate(achados[:4]):
+                    marca = "<-" if c is esc else "  "
+                    print(f"    {marca} {i}: {c.tags[:60] or '(sem tags)'}")
+                    print(f"       {c.pagina}")
         return
 
     escolhas: dict[int, int] = {}
@@ -464,7 +519,7 @@ def main() -> None:
         usados: set[str] = set()
         for n, (plano, ini, dur) in enumerate(planos, start=1):
             cues.append((ini, ini + dur, plano.linha))
-            resultados = buscar(plano.busca, chave, banco)
+            resultados = buscar(plano, chave, banco)
             if not resultados:
                 sys.exit(f"plano {n}: nenhum resultado para {plano.busca!r}. "
                          f"Troque a busca nessa linha do script.")
