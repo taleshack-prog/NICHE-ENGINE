@@ -47,15 +47,21 @@ mr.baixar = lambda url, destino, cabecalhos=None: __import__("shutil").copyfile(
 # substitui as URLs dos blocos por marcadores locais
 mr.BLOCOS = [(f"fake-{i}.wav", lista) for i, (_, lista) in enumerate(mr.BLOCOS)]
 
-def buscar_falso(termo, chave):
-    return [{"id": i % 3, "url": f"https://pexels.test/{i}",
-             "user": {"name": f"Autor {i}"},
-             "video_files": [{"link": "x", "width": 1080, "height": 1920, "quality": "hd"}]}
-            for i in range(5)]
+# Candidatos falsos alternando vertical / horizontal, para exercitar os DOIS
+# caminhos de enquadramento: preenchimento por recorte e composicao com fundo.
+FORMATOS = [(1080, 1920), (1920, 1080), (720, 1280)]
+
+def buscar_falso(termo, chave, banco=""):
+    saida = []
+    for i in range(5):
+        w, h = FORMATOS[i % 3]
+        saida.append(mr.Candidato(str(i % 3), f"https://banco.test/{i}",
+                                  f"Autor {i}", "x", w, h))
+    return saida
 
 mr.buscar = buscar_falso
-mr.obter_clipe = lambda video: clipes[video["id"]]
-mr.chave_pexels = lambda: "falsa"
+mr.obter_clipe = lambda cand: clipes[int(cand.ident)]
+mr.escolher_banco = lambda: ("pixabay", "falsa")
 
 saida = area / "saida.mp4"
 sys.argv = ["montar-real.py", "--saida", str(saida), "--trocar", "4=1"]

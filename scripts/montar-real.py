@@ -66,6 +66,23 @@ class Plano:
     busca: str
 
 
+@dataclass
+class Candidato:
+    """Um clipe de banco, normalizado — o script não sabe de qual banco veio."""
+
+    ident: str
+    pagina: str
+    autor: str
+    link: str
+    largura: int
+    altura: int
+
+    @property
+    def retrato(self) -> bool:
+        # 1.2 e não 1.0: quadrado recortado para 9:16 já amplia demais.
+        return self.altura >= self.largura * 1.2
+
+
 # Narração já gerada e paga, um áudio por bloco de pontuação.
 # Cada bloco carrega seus planos; a duração de cada plano sai repartida dentro
 # do bloco na proporção do número de letras da linha. O erro fica preso ao
@@ -133,21 +150,41 @@ def duracao_ms(arquivo: Path) -> int:
     return round(float(r.stdout.strip()) * 1000)
 
 
-def chave_pexels() -> str:
+def ler_env(nome: str) -> str | None:
     """Env primeiro; depois o .env do repositório, se existir."""
-    if k := os.environ.get("PEXELS_API_KEY"):
-        return k.strip()
+    if v := os.environ.get(nome):
+        return v.strip()
     for env in (Path(__file__).resolve().parent.parent / ".env",
                 Path.home() / "Downloads/NICHE-ENGINE/.env"):
         if env.exists():
             for linha in env.read_text().splitlines():
-                if m := re.match(r"\s*PEXELS_API_KEY\s*=\s*(.+)", linha):
-                    return m.group(1).strip().strip("'\"")
+                if m := re.match(rf"\s*{nome}\s*=\s*(.+)", linha):
+                    v = m.group(1).strip().strip("'\"")
+                    if v:
+                        return v
+    return None
+
+
+def escolher_banco() -> tuple[str, str]:
+    """
+    Devolve (banco, chave). Pexels primeiro quando há as duas chaves: o acervo
+    vertical dele é maior, e vertical evita o recorte.
+
+    O Pexels pausou a emissão de chaves novas em 06/10/2026 — por isso o
+    Pixabay existe aqui, e não como luxo de abstração.
+    """
+    if k := ler_env("PEXELS_API_KEY"):
+        return "pexels", k
+    if k := ler_env("PIXABAY_API_KEY"):
+        return "pixabay", k
     sys.exit(
-        "falta a PEXELS_API_KEY.\n"
-        "  1. pegue a sua (grátis, instantâneo) em https://www.pexels.com/api/\n"
-        "  2. abra o .env no VSCode e acrescente a linha  PEXELS_API_KEY=...\n"
-        "     (no VSCode, não pelo terminal)"
+        "falta a chave do banco de filmagem. Qualquer um dos dois serve:\n\n"
+        "  PIXABAY  (funcionando hoje) — entre em https://pixabay.com/api/docs/\n"
+        "           já logado; a chave aparece na própria página. Acrescente ao\n"
+        "           .env:  PIXABAY_API_KEY=...\n\n"
+        "  PEXELS   (emissão de chaves pausada em 06/10/2026, tente mais tarde)\n"
+        "           https://www.pexels.com/api/new/ →  PEXELS_API_KEY=...\n\n"
+        "Edite o .env no VSCode, não pelo terminal."
     )
 
 
@@ -161,57 +198,81 @@ def baixar(url: str, destino: Path, cabecalhos: dict[str, str] | None = None) ->
 # ─────────────────────────── Pexels ───────────────────────────
 
 
-def buscar(termo: str, chave: str) -> list[dict]:
+def _json(url: str, cabecalhos: dict[str, str] | None = None, banco: str = "") -> dict:
+    req = urllib.request.Request(url, headers=cabecalhos or {})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return json.load(resp)
+    except urllib.error.HTTPError as e:
+        if e.code in (400, 401, 403, 429):
+            sys.exit(f"{banco} recusou a requisição (HTTP {e.code}). Confira a chave no .env.")
+        raise
+
+
+def _melhor(arquivos: list[tuple[str, int, int]]) -> tuple[str, int, int] | None:
     """
-    Vídeos verticais primeiro. Se o acervo não tiver retrato suficiente para
-    aquele termo, aceita qualquer orientação — recortar do meio de um 16:9
-    perde as laterais, mas é melhor que não ter o plano.
+    O arquivo mais perto de 1920 de altura. Nem o 4K (minutos de download para
+    ser reduzido depois) nem o 360p. Retrato ganha empate.
     """
-    saida: list[dict] = []
-    vistos: set[int] = set()
+    uteis = [a for a in arquivos if a[0] and a[1] and a[2]]
+    if not uteis:
+        return None
+    return max(uteis, key=lambda a: (1 if a[2] >= a[1] * 1.2 else 0, -abs(a[2] - 1920)))
+
+
+def buscar_pexels(termo: str, chave: str) -> list[Candidato]:
+    """Verticais primeiro; completa com qualquer orientação se faltar."""
+    saida, vistos = [], set()
     for orientacao in ("portrait", None):
-        params = {"query": termo, "per_page": CANDIDATOS, "size": "medium"}
+        p = {"query": termo, "per_page": CANDIDATOS, "size": "medium"}
         if orientacao:
-            params["orientation"] = orientacao
-        url = "https://api.pexels.com/v1/videos/search?" + urllib.parse.urlencode(params)
-        req = urllib.request.Request(url, headers={"Authorization": chave})
-        try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                dados = json.load(resp)
-        except urllib.error.HTTPError as e:
-            if e.code in (401, 403):
-                sys.exit(f"Pexels recusou a chave (HTTP {e.code}). Confira a PEXELS_API_KEY.")
-            raise
+            p["orientation"] = orientacao
+        dados = _json("https://api.pexels.com/v1/videos/search?" + urllib.parse.urlencode(p),
+                      {"Authorization": chave}, "Pexels")
         for v in dados.get("videos", []):
-            if v["id"] not in vistos:
-                vistos.add(v["id"])
-                saida.append(v)
+            if v["id"] in vistos:
+                continue
+            vistos.add(v["id"])
+            melhor = _melhor([(f.get("link"), f.get("width"), f.get("height"))
+                              for f in v.get("video_files", [])])
+            if melhor:
+                saida.append(Candidato(str(v["id"]), v.get("url", ""),
+                                       v.get("user", {}).get("name", "?"), *melhor))
         if len(saida) >= CANDIDATOS:
             break
     return saida
 
 
-def melhor_arquivo(video: dict) -> dict | None:
+def buscar_pixabay(termo: str, chave: str) -> list[Candidato]:
     """
-    O maior arquivo que ainda não é exagero: 4K levaria minutos para baixar e
-    seria reduzido para 1080 de qualquer jeito. Prefere retrato.
+    O Pixabay NÃO tem filtro de orientação em vídeo (confirmado na doc da API),
+    e o acervo é quase todo horizontal. Então aqui a ordenação é nossa: retrato
+    primeiro, horizontal depois — e o horizontal entra pela composição com
+    fundo desfocado, nunca por recorte de 3x no centro.
     """
-    arquivos = [f for f in video.get("video_files", []) if f.get("link") and f.get("height")]
-    if not arquivos:
-        return None
-    def nota(f: dict) -> tuple[int, int]:
-        retrato = 1 if f["height"] > (f.get("width") or 0) else 0
-        return (retrato, -abs((f.get("height") or 0) - 1920))
-    return sorted(arquivos, key=nota, reverse=True)[0]
+    p = {"key": chave, "q": termo, "per_page": CANDIDATOS,
+         "video_type": "film", "safesearch": "true"}
+    dados = _json("https://pixabay.com/api/videos/?" + urllib.parse.urlencode(p),
+                  None, "Pixabay")
+    saida = []
+    for h in dados.get("hits", []):
+        melhor = _melhor([(v.get("url"), v.get("width"), v.get("height"))
+                          for v in h.get("videos", {}).values()])
+        if melhor:
+            saida.append(Candidato(str(h["id"]), h.get("pageURL", ""),
+                                   h.get("user", "?"), *melhor))
+    saida.sort(key=lambda c: 0 if c.retrato else 1)
+    return saida
 
 
-def obter_clipe(video: dict) -> Path:
-    arq = melhor_arquivo(video)
-    if not arq:
-        raise RuntimeError(f"vídeo {video['id']} sem arquivo utilizável")
-    destino = CACHE / f"{video['id']}.mp4"
+def buscar(termo: str, chave: str, banco: str = "") -> list[Candidato]:
+    return (buscar_pexels if banco == "pexels" else buscar_pixabay)(termo, chave)
+
+
+def obter_clipe(cand: Candidato) -> Path:
+    destino = CACHE / f"{cand.ident}.mp4"
     if not destino.exists() or destino.stat().st_size == 0:
-        baixar(arq["link"], destino)
+        baixar(cand.link, destino)
     return destino
 
 
@@ -250,7 +311,37 @@ def construir_ass(cues: list[tuple[int, int, str]]) -> str:
 # ─────────────────────────── montagem ───────────────────────────
 
 
-def recortar(origem: Path, destino: Path, duracao_ms_alvo: int) -> None:
+def enquadrar(retrato: bool) -> str:
+    """
+    O filtro que leva o clipe ao 9:16, e é onde se ganha ou se perde nitidez.
+
+    RETRATO: preenche a tela inteira. Escala até cobrir e corta as sobras —
+    perda mínima, porque a origem já é alta.
+
+    HORIZONTAL: NÃO preenche por recorte. Encher 1080x1920 com o centro de um
+    1920x1080 significa ampliar 3,2x o miolo do quadro; é exatamente a textura
+    borrada que a versão gerada tinha. Em vez disso, recorta um 4:5 do centro
+    (864x1080 num Full HD — ampliação de 1,25x, ainda nítida), ocupa 70% da
+    altura, e o resto é o mesmo quadro desfocado e escurecido atrás. O desfoque
+    é feito em miniatura e remontado: mesmo resultado, uma fração do custo.
+    """
+    if retrato:
+        return (f"scale={LARGURA}:{ALTURA}:force_original_aspect_ratio=increase,"
+                f"crop={LARGURA}:{ALTURA},fps={FPS},"
+                f"tpad=stop_mode=clone:stop_duration=3,format=yuv420p")
+
+    alt_fg = round(LARGURA * 1.25)  # 4:5
+    return (
+        "split=2[bg][fg];"
+        f"[bg]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,"
+        f"gblur=sigma=12,scale={LARGURA}:{ALTURA},eq=brightness=-0.15[fundo];"
+        f"[fg]crop=ih*0.8:ih,scale={LARGURA}:{alt_fg}[frente];"
+        f"[fundo][frente]overlay=(W-w)/2:(H-h)/2,fps={FPS},"
+        f"tpad=stop_mode=clone:stop_duration=3,format=yuv420p"
+    )
+
+
+def recortar(origem: Path, destino: Path, duracao_ms_alvo: int, retrato: bool) -> None:
     """
     Tira do clipe uma janela do tamanho exato do plano, começando 15% adiante:
     o primeiro instante de filmagem de banco costuma ser o pior (câmera
@@ -263,15 +354,10 @@ def recortar(origem: Path, destino: Path, duracao_ms_alvo: int) -> None:
     if total_s > dur_s:
         inicio = min(total_s * 0.15, total_s - dur_s)
 
-    vf = (
-        f"scale={LARGURA}:{ALTURA}:force_original_aspect_ratio=increase,"
-        f"crop={LARGURA}:{ALTURA},fps={FPS},"
-        f"tpad=stop_mode=clone:stop_duration=3,format=yuv420p"
-    )
     rodar([
         "ffmpeg", "-y", "-loglevel", "error", "-accurate_seek",
         "-ss", f"{inicio:.3f}", "-i", str(origem),
-        "-t", f"{dur_s:.3f}", "-vf", vf, "-an",
+        "-t", f"{dur_s:.3f}", "-filter_complex", enquadrar(retrato), "-an",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
         "-video_track_timescale", "90000", str(destino),
     ])
@@ -291,7 +377,7 @@ def main() -> None:
         p, i = t.split("=")
         escolhas[int(p)] = int(i)
 
-    chave = chave_pexels()
+    banco, chave = escolher_banco()
     saida = Path(args.saida)
     tmp = Path(tempfile.mkdtemp(prefix="real-"))
     try:
@@ -339,11 +425,11 @@ def main() -> None:
               f"(média {sum(d for _, _, d in planos) / len(planos) / 1000:.1f}s por corte)")
 
         # ── 2. Um clipe real por plano ──
-        print(f"buscando {len(planos)} clipes no Pexels…")
+        print(f"buscando {len(planos)} clipes ({banco})…")
         pedacos, creditos, cues = [], [], []
         for n, (plano, ini, dur) in enumerate(planos, start=1):
             cues.append((ini, ini + dur, plano.linha))
-            resultados = buscar(plano.busca, chave)
+            resultados = buscar(plano.busca, chave, banco)
             if not resultados:
                 sys.exit(f"plano {n}: nenhum resultado para {plano.busca!r}. "
                          f"Troque a busca nessa linha do script.")
@@ -351,13 +437,14 @@ def main() -> None:
             if idx >= len(resultados):
                 sys.exit(f"plano {n}: só há {len(resultados)} candidatos, "
                          f"índices 0 a {len(resultados) - 1}.")
-            video = resultados[idx]
-            origem = obter_clipe(video)
+            cand = resultados[idx]
+            origem = obter_clipe(cand)
             corte = tmp / f"plano-{n:02d}.mp4"
-            recortar(origem, corte, dur)
+            recortar(origem, corte, dur, cand.retrato)
             pedacos.append(corte)
-            creditos.append((n, plano.linha, video, len(resultados)))
-            print(f"  {n:2d}. {dur/1000:4.1f}s  {plano.linha}")
+            creditos.append((n, plano.linha, cand, len(resultados)))
+            marca = "vertical" if cand.retrato else "horizontal+fundo"
+            print(f"  {n:2d}. {dur/1000:4.1f}s  {plano.linha}  [{marca}]")
 
         lista_v = tmp / "planos.txt"
         lista_v.write_text("\n".join(f"file '{p}'" for p in pedacos))
@@ -400,11 +487,11 @@ def main() -> None:
 
         print(f"\npronto: {saida}  ({duracao_ms(saida) / 1000:.1f}s)")
         print("\nplano a plano — para trocar, use o número:")
-        for n, linha, v, total in creditos:
-            print(f"  {n:2d}. {linha}\n      {v['url']}  ({total} candidatos)")
-        print("\ncréditos para a legenda do post (o Pexels pede):")
-        autores = sorted({v["user"]["name"] for _, _, v, _ in creditos})
-        print("      Vídeos: " + ", ".join(autores) + " / Pexels")
+        for n, linha, c, total in creditos:
+            print(f"  {n:2d}. {linha}\n      {c.pagina}  ({total} candidatos)")
+        print("\ncréditos para a legenda do post:")
+        autores = sorted({c.autor for _, _, c, _ in creditos})
+        print(f"      Vídeos: {', '.join(autores)} / {banco.capitalize()}")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
