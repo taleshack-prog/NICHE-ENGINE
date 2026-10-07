@@ -63,6 +63,23 @@ class Obra:
             self.imagem = Image.open(self.arquivo).convert("RGB")
         return self.imagem
 
+    def aparada(self) -> Image.Image:
+        """A obra sem a parede e a moldura que a foto pegou nas bordas."""
+        src = self.carregar()
+        m = 0.025
+        return src.crop((int(src.width * m), int(src.height * m),
+                         int(src.width * (1 - m)), int(src.height * (1 - m))))
+
+    def ampliacao_tela_cheia(self) -> float:
+        """Quanto a obra precisa ser ESTICADA para preencher 1080x1920.
+
+        Acima de ~1,15 a pincelada vira papa. A Frequência Abissal tem 1.323px
+        de altura: preenchê-la na vertical exigiria 1,5x. Era a mesma falha que
+        arruinou a versão gerada, e passou despercebida porque eu só olhei a
+        largura das fotos."""
+        a = self.aparada()
+        return ALTURA / a.height
+
     def tela_cheia(self) -> Image.Image:
         """
         A obra aparada e escalada para a altura do vídeo, guardada.
@@ -71,13 +88,7 @@ class Obra:
         7127x2861 com LANCZOS: minutos de render para um resultado idêntico.
         """
         if self._cheia is None:
-            src = self.carregar()
-            # As fotos trazem um dedo de parede e moldura nas bordas; em tela
-            # cheia isso vira uma faixa cinza que o olho lê como erro de
-            # enquadramento.
-            m = 0.025
-            src = src.crop((int(src.width * m), int(src.height * m),
-                            int(src.width * (1 - m)), int(src.height * (1 - m))))
+            src = self.aparada()
             self._cheia = src.resize(
                 (int(src.width * ALTURA / src.height), ALTURA), Image.LANCZOS
             )
@@ -171,23 +182,106 @@ def escrever_legenda(img: Image.Image, texto: str, opacidade: float = 1.0) -> No
     img.paste(cor, (0, 0), mascara)
 
 
+AMPLIACAO_MAXIMA = 1.15
+
+
+def _emoldurada(obra: Obra, t: float) -> Image.Image:
+    """
+    A obra como objeto numa parede escura, na largura da tela.
+
+    É o que se faz quando preencher a vertical exigiria esticar demais: em vez
+    de uma pincelada borrada ocupando tudo, uma pintura nítida ocupando a faixa
+    central. Perde-se área, ganha-se a textura — que numa tela de impasto é o
+    assunto.
+    """
+    src = obra.aparada()
+    larg = LARGURA - 60
+    alt = int(src.height * larg / src.width)
+    quadro = src.resize((larg, alt), Image.LANCZOS)
+
+    img = tela()
+    # Deriva lenta na vertical, para o plano não ficar morto.
+    y = int((ALTURA * 0.46 - alt / 2) + 30 * (t - 0.5))
+    img.paste(quadro, (30, y))
+    d = ImageDraw.Draw(img)
+    d.rectangle([30, y, 30 + larg - 1, y + alt - 1], outline=(58, 36, 92), width=2)
+    return img
+
+
 def plano_obra(obra: Obra, t: float, panoramica: float = 0.5) -> Image.Image:
     """
-    A obra ocupando a tela inteira, com deslocamento horizontal lento.
+    A obra em tela cheia, atravessada lentamente — quando ela aguenta.
 
-    As telas são panorâmicas (2,5:1) e a tela do celular é 0,56:1. Em vez de
-    encolher a pintura num retângulo no meio do quadro, atravessa-se ela — que
-    é como se olha um quadro largo de perto. E como a origem tem 7000px de
-    largura, o recorte vertical ainda é REDUÇÃO de escala: a pintura fica
-    nítida, ao contrário de qualquer imagem gerada que precisasse ser ampliada.
+    Quando não aguenta (ver ampliacao_tela_cheia), cai para a versão
+    emoldurada. A regra está no código porque confiar na minha atenção já
+    falhou: eu olhei a largura das fotos, aprovei, e não reparei que uma delas
+    tinha metade da altura necessária.
     """
+    if obra.ampliacao_tela_cheia() > AMPLIACAO_MAXIMA:
+        return _emoldurada(obra, t)
+
     grande = obra.tela_cheia()
     curso = max(grande.width - LARGURA, 0)
-    # Suaviza início e fim: um movimento que começa e termina parando lê como
-    # câmera conduzida, não como rolagem automática.
     suave = t * t * (3 - 2 * t)
     x = int((curso * panoramica) * suave + curso * (1 - panoramica) * 0.5)
     return grande.crop((x, 0, x + LARGURA, ALTURA))
+
+
+def plano_detalhe(obra: Obra, t: float, zona: float, aperto: float = 1.0) -> Image.Image:
+    """
+    Um pedaço da obra, recortado do ORIGINAL e nunca esticado além do limite.
+
+    Oito segundos atravessando uma tela só é lento: o olho entende o quadro em
+    dois segundos e depois espera. Recortes em posições diferentes rendem
+    planos que não se parecem.
+
+    `zona` é a posição horizontal (0 = esquerda, 1 = direita). `aperto` é
+    quanto da altura o recorte toma, mas é CORRIGIDO para baixo quando o
+    recorte pedido exigiria esticar mais que AMPLIACAO_MAXIMA — a vontade de
+    aproximar não pode custar nitidez.
+    """
+    src = obra.aparada()
+    minimo = (ALTURA / AMPLIACAO_MAXIMA) / src.height
+    aperto = min(1.0, max(aperto, minimo))
+
+    alt = int(src.height * aperto)
+    larg = min(src.width, int(alt * LARGURA / ALTURA))
+    passo = 1.0 + 0.05 * t
+    lw, lh = larg / passo, alt / passo
+    cx = (larg / 2) + (src.width - larg) * zona
+    cy = src.height / 2
+    corte = src.crop((int(cx - lw / 2), int(cy - lh / 2),
+                      int(cx + lw / 2), int(cy + lh / 2)))
+    return corte.resize((LARGURA, ALTURA), Image.LANCZOS)
+
+
+def plano_placa(titulo: str, destaque: str, rodape: str, t: float,
+                cor: tuple[int, int, int] = CIANO) -> Image.Image:
+    """
+    Placa tipográfica — a versão em código dos cards do projeto.
+
+    Os cards originais trazem o texto QUEIMADO na imagem, com os erros dentro
+    ("250,000" com vírgula, rodapé em inglês, concordância de NEUROS). Corrigir
+    pixel não dá; redesenhar dá, e de quebra a placa passa a usar a mesma
+    paleta e a mesma fonte dos gráficos, virando um sistema só.
+    """
+    img = tela()
+    d = ImageDraw.Draw(img)
+    f_tit, f_des, f_rod = fonte(34), fonte(76), fonte(32)
+
+    surge = min(1.0, t * 2.2)
+    d.text((110, 560), titulo.upper(), font=f_tit, fill=cor)
+    d.line([(110, 620), (110 + int(300 * surge), 620)], fill=cor, width=3)
+
+    linhas_des = quebrar(destaque, f_des, LARGURA - 220)
+    for i, linha in enumerate(linhas_des):
+        d.text((110, 680 + i * 92), linha, font=f_des, fill=TEXTO)
+    # O rodapé acompanha o destaque. Ancorado numa altura fixa, abria um vão de
+    # 400px quando o destaque era curto.
+    base = 680 + len(linhas_des) * 92 + 34
+    for i, linha in enumerate(quebrar(rodape, f_rod, LARGURA - 220)):
+        d.text((110, base + i * 46), linha, font=f_rod, fill=APAGADO)
+    return img
 
 
 def plano_grades(t: float) -> Image.Image:
@@ -332,39 +426,78 @@ def montar(obras: dict[str, Obra], saida: Path, voz: Path | None,
     # (duração em segundos, função que desenha, legenda)
     # As durações saem do texto: 2,6 palavras por segundo, que é ritmo de fala
     # calma. Assim a narração gravada depois encaixa sem reeditar os planos.
-    roteiro = [
-        (4.0, lambda t: plano_obra(kanji, t, 0.55),
-         "Esse quadro está na blockchain, dividido em cem pedaços"),
-        (3.5, lambda t: plano_obra(kanji, 0.55 + t * 0.4, 1.0),
-         "Cento e noventa e oito reais cada um"),
-        (4.5, plano_grades,
-         "Em quantos pedaços? Quem decide é o artista"),
-        (6.0, lambda t: plano_obra(abissal, t, 0.6),
-         "Quem compra não leva uma figurinha digital. Leva fração de uma tela que existe"),
-        (5.5, lambda t: plano_obra(abissal, 0.6 + t * 0.4, 1.0),
-         "Quem juntar as cem queima os tokens e leva a tela para casa"),
-        (4.5, plano_divisao,
-         "Oitenta por cento de cada venda vai para o artista"),
-        (3.0, lambda t: plano_etiquetas([kanji, abissal, metropole], t * 0.5),
-         "Repara na etiqueta de cada obra"),
-        (4.5, lambda t: plano_etiquetas([kanji, abissal, metropole], 0.5 + t * 0.5),
-         "Elas são catalogadas pelo estado mental em que foram pintadas"),
-        (2.5, lambda t: plano_obra(metropole, t * 0.5, 0.5),
-         "Porque os artistas são neurodivergentes"),
-        (4.0, lambda t: plano_obra(metropole, 0.5 + t * 0.5, 1.0),
-         "Parte de cada transação financia pesquisa em neurociência"),
-        (3.5, plano_fecho, "Não é especulação. É o contrário dela"),
-        (3.5, lambda t: plano_fecho(0.5 + t * 0.5),
-         "NeuroArt DApp — unindo a arte à ciência"),
+    # Cada FALA pode ter vários planos: a legenda fica, a imagem troca. É o que
+    # tira o começo de "oito segundos em cima de uma tela só".
+    falas: list[tuple[float, str, list]] = [
+        (5.0, "Esse quadro está na blockchain, dividido em cem pedaços", [
+            lambda t: plano_detalhe(kanji, t, 0.15),
+            lambda t: plano_detalhe(kanji, t, 0.62, 0.62),
+            lambda t: plano_obra(kanji, t * 0.3, 0.4),
+        ]),
+        (4.3, "Cento e noventa e oito reais cada um", [
+            lambda t: plano_placa("VALOR DA OBRA", "R$ 19.800",
+                                  "100 frações · R$ 198,00 cada", t),
+            lambda t: plano_detalhe(kanji, t, 0.85, 0.60),
+        ]),
+        (4.8, "Em quantos pedaços? Quem decide é o artista", [plano_grades]),
+        (7.7, "Quem compra não leva uma figurinha digital. "
+              "Leva fração de uma tela que existe", [
+            lambda t: plano_detalhe(abissal, t, 0.2, 0.64),
+            lambda t: plano_obra(abissal, t * 0.4, 0.5),
+            lambda t: plano_detalhe(abissal, t, 0.75, 0.60),
+        ]),
+        (6.6, "Quem juntar as cem queima os tokens e leva a tela para casa", [
+            lambda t: plano_placa("RESGATE", "100% das frações",
+                                  "queima os tokens e retira a obra física", t),
+            lambda t: plano_obra(abissal, 0.5 + t * 0.4, 1.0),
+        ]),
+        (7.5, "Oitenta por cento de cada venda vai para o artista",
+         [plano_divisao]),
+        (4.2, "Repara na etiqueta de cada obra", [
+            lambda t: plano_detalhe(metropole, t, 0.3, 0.60),
+            lambda t: plano_etiquetas([kanji, abissal, metropole], t * 0.4),
+        ]),
+        (9.7, "Elas são catalogadas pelo estado mental em que foram pintadas", [
+            lambda t: plano_etiquetas([kanji, abissal, metropole], 0.4 + t * 0.6),
+            lambda t: plano_detalhe(kanji, t, 0.45, 0.58),
+            lambda t: plano_detalhe(metropole, t, 0.7, 0.60),
+        ]),
+        (4.4, "Porque os artistas são neurodivergentes", [
+            lambda t: plano_placa("ARTISTAS", "Neurodivergentes",
+                                  "hiperfoco · estado de fluxo", t),
+        ]),
+        (8.3, "Parte de cada transação financia pesquisa em neurociência", [
+            lambda t: plano_placa("DESTINO DAS TAXAS", "Pesquisa",
+                                  "parte de cada transação vai para o fundo "
+                                  "de pesquisa em neurociência", t),
+            lambda t: plano_obra(metropole, t * 0.5, 0.5),
+        ]),
+        (3.0, "Não é especulação. É o contrário dela", [
+            lambda t: plano_placa("", "Cada NEURO é fração de uma obra real",
+                                  "a maioria dos tokens não lastreia nada", t,
+                                  VERDE),
+        ]),
+        (3.9, "NeuroArt DApp — unindo a arte à ciência", [plano_fecho]),
     ]
+
+    # Desdobra em planos: a duração da fala é repartida entre as imagens dela.
+    roteiro = []
+    for dur, legenda, visuais in falas:
+        fatia = dur / len(visuais)
+        for v in visuais:
+            roteiro.append((fatia, v, legenda))
 
     if tempos:
         # Os tempos vêm medidos da narração gravada (ver
         # scripts/sincronizar_narracao.py). Casar o plano com a fala é o que
         # separa um vídeo legendado de um vídeo montado.
-        if len(tempos) != len(roteiro):
-            sys.exit(f"{len(tempos)} tempos para {len(roteiro)} planos")
-        roteiro = [(t, f, l) for t, (_, f, l) in zip(tempos, roteiro)]
+        if len(tempos) != len(falas):
+            sys.exit(f"{len(tempos)} tempos para {len(falas)} falas")
+        roteiro = []
+        for medido, (_, legenda, visuais) in zip(tempos, falas):
+            fatia = medido / len(visuais)
+            for v in visuais:
+                roteiro.append((fatia, v, legenda))
 
     tmp = Path(tempfile.mkdtemp(prefix="neuroart-"))
     try:
