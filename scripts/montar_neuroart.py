@@ -429,8 +429,59 @@ def plano_fecho(t: float) -> Image.Image:
 # ───────────────────────── a peça ─────────────────────────
 
 
+def mixar(video: Path, saida: Path, voz: Path, trilha: Path | None,
+          volume: float, ducking: float, tmp: Path) -> None:
+    """
+    Junta voz e trilha num vídeo já renderizado.
+
+    Separado da montagem de propósito: o vídeo leva dois minutos para
+    renderizar, a mistura leva cinco segundos. Como achar o equilíbrio entre
+    voz e música é questão de ouvido e leva algumas tentativas, refazer o
+    vídeo a cada tentativa seria desperdício puro.
+
+    `volume` é o ganho da trilha e `ducking` quanto ela recua quando a voz
+    entra. Ducking alto (12) some com a música sob a fala; baixo (4) deixa ela
+    presente, respirando junto.
+    """
+    # A voz é normalizada ANTES, em passo separado, e não dentro do grafo.
+    #
+    # POR QUE SEPARADO: o loudnorm tem ~3s de lookahead. Quando a saída dele
+    # alimenta um asplit cujas pontas são consumidas em ritmos diferentes (uma
+    # vai para o sidechain), a cauda se perde na descarga final. Medido numa
+    # gravação real: 69,57s sem loudnorm no grafo, 66,67s com ele — três
+    # segundos de fala sumindo calados no fim.
+    normalizada = tmp / "voz-normalizada.wav"
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-i", str(voz),
+         "-af", "aformat=sample_fmts=fltp:channel_layouts=stereo,"
+                "loudnorm=I=-16:TP=-1.5:LRA=11", str(normalizada)],
+        check=True,
+    )
+
+    cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(video),
+           "-i", str(normalizada)]
+    voz_f = "[1:a]aformat=sample_fmts=fltp:channel_layouts=stereo"
+    if trilha and trilha.exists():
+        cmd += ["-stream_loop", "-1", "-i", str(trilha)]
+        audio = (
+            f"{voz_f},asplit=2[voz][lado];"
+            "[2:a]aformat=sample_fmts=fltp:channel_layouts=stereo,"
+            f"volume={volume}[mus];"
+            f"[mus][lado]sidechaincompress="
+            f"threshold=0.05:ratio={ducking}:attack=20:release=450[duck];"
+            "[voz][duck]amix=inputs=2:duration=first:normalize=0[aout]"
+        )
+    else:
+        audio = f"{voz_f}[aout]"
+    cmd += ["-filter_complex", audio, "-map", "0:v:0", "-map", "[aout]",
+            "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest",
+            "-movflags", "+faststart", str(saida)]
+    subprocess.run(cmd, check=True)
+
+
 def montar(obras: dict[str, Obra], saida: Path, voz: Path | None,
-           tempos: list[float] | None = None, trilha: Path | None = None) -> None:
+           tempos: list[float] | None = None, trilha: Path | None = None,
+           volume: float = 0.45, ducking: float = 4.0) -> None:
     kanji, abissal, metropole = obras["kanji"], obras["abissal"], obras["metropole"]
 
     # (duração em segundos, função que desenha, legenda)
@@ -555,42 +606,7 @@ def montar(obras: dict[str, Obra], saida: Path, voz: Path | None,
 
         saida.parent.mkdir(parents=True, exist_ok=True)
         if voz and voz.exists():
-            # A voz é normalizada ANTES, em passo separado, e não dentro do
-            # grafo de mixagem.
-            #
-            # POR QUE SEPARADO: o loudnorm tem ~3s de lookahead. Quando a saída
-            # dele alimenta um asplit cujas duas pontas são consumidas em
-            # ritmos diferentes (uma vai para o sidechain), a cauda se perde na
-            # descarga final. Medido nesta gravação: 69,57s sem loudnorm no
-            # grafo, 66,67s com ele — quase três segundos de fala sumindo no
-            # fim, calados.
-            normalizada = tmp / "voz-normalizada.wav"
-            subprocess.run(
-                ["ffmpeg", "-y", "-loglevel", "error", "-i", str(voz),
-                 "-af", "aformat=sample_fmts=fltp:channel_layouts=stereo,"
-                        "loudnorm=I=-16:TP=-1.5:LRA=11",
-                 str(normalizada)],
-                check=True,
-            )
-            cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(bruto),
-                   "-i", str(normalizada)]
-            voz_f = "[1:a]aformat=sample_fmts=fltp:channel_layouts=stereo"
-            if trilha and trilha.exists():
-                cmd += ["-stream_loop", "-1", "-i", str(trilha)]
-                audio = (
-                    f"{voz_f},asplit=2[voz][lado];"
-                    "[2:a]aformat=sample_fmts=fltp:channel_layouts=stereo,"
-                    "volume=0.20[mus];"
-                    "[mus][lado]sidechaincompress="
-                    "threshold=0.03:ratio=12:attack=15:release=350[duck];"
-                    "[voz][duck]amix=inputs=2:duration=first:normalize=0[aout]"
-                )
-            else:
-                audio = f"{voz_f}[aout]"
-            cmd += ["-filter_complex", audio, "-map", "0:v:0", "-map", "[aout]",
-                    "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest",
-                    "-movflags", "+faststart", str(saida)]
-            subprocess.run(cmd, check=True)
+            mixar(bruto, saida, voz, trilha, volume, ducking, tmp)
         else:
             subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(bruto),
                             "-c", "copy", "-movflags", "+faststart", str(saida)],
@@ -610,6 +626,12 @@ def main() -> None:
     ap.add_argument("--saida", type=Path, default=Path.home() / "Downloads/neuroart.mp4")
     ap.add_argument("--voz", type=Path, help="narração gravada, para mixar")
     ap.add_argument("--trilha", type=Path, help="música de fundo, entra sob a voz")
+    ap.add_argument("--volume-trilha", type=float, default=0.45,
+                    help="ganho da música (0.20 discreta, 0.45 presente, 0.70 alta)")
+    ap.add_argument("--ducking", type=float, default=4.0,
+                    help="quanto a música recua sob a voz (12 some, 4 respira junto)")
+    ap.add_argument("--remix", type=Path,
+                    help="vídeo já montado: refaz SÓ o áudio, em segundos")
     ap.add_argument("--tempos", help="duração de cada plano em segundos, separadas por "
                                      "vírgula (saída de sincronizar_narracao.py)")
     args = ap.parse_args()
@@ -627,8 +649,22 @@ def main() -> None:
             sys.exit(f"não achei {base}.* em {args.obras}")
         obras[chave] = Obra(TITULOS[chave], achado, etiqueta, fracoes, valor)
 
+    if args.remix:
+        if not args.voz:
+            sys.exit("--remix precisa de --voz")
+        tmp = Path(tempfile.mkdtemp(prefix="remix-"))
+        try:
+            mixar(args.remix, args.saida, args.voz, args.trilha,
+                  args.volume_trilha, args.ducking, tmp)
+            print(f"pronto: {args.saida}  (trilha {args.volume_trilha}, "
+                  f"ducking {args.ducking})")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        return
+
     tempos = [float(x) for x in args.tempos.split(",")] if args.tempos else None
-    montar(obras, args.saida, args.voz, tempos, args.trilha)
+    montar(obras, args.saida, args.voz, tempos, args.trilha,
+           args.volume_trilha, args.ducking)
 
 
 if __name__ == "__main__":
