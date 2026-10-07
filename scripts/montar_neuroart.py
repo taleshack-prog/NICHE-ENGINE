@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import re
 import shutil
 import subprocess
 import sys
@@ -101,6 +102,15 @@ TITULOS = {
     "abissal": "Frequência Abissal",
     "metropole": "Metrópole Suspensa",
 }
+
+
+_NUCLEO = re.compile(r"[aeiouáàâãéêíóôõúü]+", re.IGNORECASE)
+
+
+def silabas(texto: str) -> int:
+    """Núcleos vocálicos. Grosseiro, mas o que importa é a PROPORÇÃO entre as
+    legendas de um mesmo bloco, e para isso serve melhor que contar palavras."""
+    return max(1, len(_NUCLEO.findall(texto)))
 
 
 def fonte(tam: int) -> ImageFont.FreeTypeFont:
@@ -426,78 +436,87 @@ def montar(obras: dict[str, Obra], saida: Path, voz: Path | None,
     # (duração em segundos, função que desenha, legenda)
     # As durações saem do texto: 2,6 palavras por segundo, que é ritmo de fala
     # calma. Assim a narração gravada depois encaixa sem reeditar os planos.
-    # Cada FALA pode ter vários planos: a legenda fica, a imagem troca. É o que
-    # tira o começo de "oito segundos em cima de uma tela só".
-    falas: list[tuple[float, str, list]] = [
-        (5.0, "Esse quadro está na blockchain, dividido em cem pedaços", [
-            lambda t: plano_detalhe(kanji, t, 0.15),
-            lambda t: plano_detalhe(kanji, t, 0.62, 0.62),
-            lambda t: plano_obra(kanji, t * 0.3, 0.4),
-        ]),
-        (4.3, "Cento e noventa e oito reais cada um", [
-            lambda t: plano_placa("VALOR DA OBRA", "R$ 19.800",
-                                  "100 frações · R$ 198,00 cada", t),
-            lambda t: plano_detalhe(kanji, t, 0.85, 0.60),
-        ]),
-        (4.8, "Em quantos pedaços? Quem decide é o artista", [plano_grades]),
-        (7.7, "Quem compra não leva uma figurinha digital. "
-              "Leva fração de uma tela que existe", [
-            lambda t: plano_detalhe(abissal, t, 0.2, 0.64),
-            lambda t: plano_obra(abissal, t * 0.4, 0.5),
-            lambda t: plano_detalhe(abissal, t, 0.75, 0.60),
-        ]),
-        (6.6, "Quem juntar as cem queima os tokens e leva a tela para casa", [
-            lambda t: plano_placa("RESGATE", "100% das frações",
-                                  "queima os tokens e retira a obra física", t),
-            lambda t: plano_obra(abissal, 0.5 + t * 0.4, 1.0),
-        ]),
-        (7.5, "Oitenta por cento de cada venda vai para o artista",
-         [plano_divisao]),
-        (4.2, "Repara na etiqueta de cada obra", [
-            lambda t: plano_detalhe(metropole, t, 0.3, 0.60),
-            lambda t: plano_etiquetas([kanji, abissal, metropole], t * 0.4),
-        ]),
-        (9.7, "Elas são catalogadas pelo estado mental em que foram pintadas", [
-            lambda t: plano_etiquetas([kanji, abissal, metropole], 0.4 + t * 0.6),
-            lambda t: plano_detalhe(kanji, t, 0.45, 0.58),
-            lambda t: plano_detalhe(metropole, t, 0.7, 0.60),
-        ]),
-        (4.4, "Porque os artistas são neurodivergentes", [
-            lambda t: plano_placa("ARTISTAS", "Neurodivergentes",
-                                  "hiperfoco · estado de fluxo", t),
-        ]),
-        (8.3, "Parte de cada transação financia pesquisa em neurociência", [
-            lambda t: plano_placa("DESTINO DAS TAXAS", "Pesquisa",
-                                  "parte de cada transação vai para o fundo "
-                                  "de pesquisa em neurociência", t),
-            lambda t: plano_obra(metropole, t * 0.5, 0.5),
-        ]),
-        (3.0, "Não é especulação. É o contrário dela", [
-            lambda t: plano_placa("", "Cada NEURO é fração de uma obra real",
-                                  "a maioria dos tokens não lastreia nada", t,
-                                  VERDE),
-        ]),
-        (3.9, "NeuroArt DApp — unindo a arte à ciência", [plano_fecho]),
+    # BLOCOS, não frases soltas.
+    #
+    # A primeira versão deste roteiro eram onze sentenças fechadas, uma por
+    # legenda. O usuário tentou gravar e travou: "as frases estão muito duras,
+    # não conectam". Estava certo — eu desenhei o texto na medida da legenda, e
+    # ninguém fala em sentenças isoladas, fala emendando.
+    #
+    # A ordem certa é a inversa: escreve-se a fala corrida, grava-se corrido, e
+    # a legenda é CORTADA depois. Cada bloco abaixo é uma respiração; dentro
+    # dele a duração medida se reparte entre as legendas na proporção das
+    # sílabas. A legenda pode quebrar no meio da frase — e fica melhor assim,
+    # porque acompanha a fala em vez de interrompê-la.
+    blocos: list[list[tuple[str, object]]] = [
+        [("Esse quadro está na blockchain",
+          lambda t: plano_detalhe(kanji, t, 0.15)),
+         ("Foi dividido em cem pedaços",
+          lambda t: plano_detalhe(kanji, t, 0.62, 0.62)),
+         ("e cada pedaço custa cento e noventa e oito reais",
+          lambda t: plano_placa("VALOR DA OBRA", "R$ 19.800",
+                                "100 frações · R$ 198,00 cada", t))],
+
+        [("Mas quem decidiu que são cem não fui eu, nem o comprador",
+          lambda t: plano_obra(kanji, t * 0.4, 0.5)),
+         ("Foi o artista", lambda t: plano_grades(t * 0.5)),
+         ("Nessa tela ele quis cem pedaços. Em outra, mil",
+          lambda t: plano_grades(0.5 + t * 0.5))],
+
+        [("E quem compra um pedaço não leva figurinha digital",
+          lambda t: plano_detalhe(abissal, t, 0.2, 0.64)),
+         ("Leva fração de uma tela que existe",
+          lambda t: plano_obra(abissal, t, 0.5)),
+         ("pendurada numa parede",
+          lambda t: plano_detalhe(abissal, t, 0.78, 0.60)),
+         ("Tanto que, juntando as cem frações",
+          lambda t: plano_placa("RESGATE", "100% das frações",
+                                "queima os tokens e retira a obra física", t)),
+         ("queima os tokens e leva a tela para casa",
+          lambda t: plano_obra(kanji, 0.4 + t * 0.6, 1.0))],
+
+        [("De cada venda, oitenta por cento vai para o artista", plano_divisao)],
+
+        [("E olha a etiqueta de cada obra",
+          lambda t: plano_detalhe(metropole, t, 0.3, 0.60)),
+         ("hiperfoco, estado de fluxo",
+          lambda t: plano_etiquetas([kanji, abissal, metropole], t * 0.5)),
+         ("Elas são catalogadas pelo estado mental em que foram pintadas",
+          lambda t: plano_etiquetas([kanji, abissal, metropole], 0.5 + t * 0.5)),
+         ("porque os artistas são neurodivergentes",
+          lambda t: plano_placa("ARTISTAS", "Neurodivergentes",
+                                "hiperfoco · estado de fluxo", t))],
+
+        [("Parte de cada transação financia",
+          lambda t: plano_obra(metropole, t * 0.5, 0.5)),
+         ("pesquisa em neurociência",
+          lambda t: plano_placa("DESTINO DAS TAXAS", "Pesquisa",
+                                "parte de cada transação vai para o fundo de "
+                                "pesquisa em neurociência", t))],
+
+        [("Então não, isso não é especulação",
+          lambda t: plano_detalhe(kanji, t, 0.9, 0.62)),
+         ("É o contrário dela",
+          lambda t: plano_placa("", "Cada NEURO é fração de uma obra real",
+                                "a maioria dos tokens não lastreia nada", t,
+                                VERDE)),
+         ("NeuroArt DApp — unindo a arte à ciência", plano_fecho)],
     ]
 
-    # Desdobra em planos: a duração da fala é repartida entre as imagens dela.
-    roteiro = []
-    for dur, legenda, visuais in falas:
-        fatia = dur / len(visuais)
-        for v in visuais:
-            roteiro.append((fatia, v, legenda))
-
+    # A duração de cada bloco vem medida da gravação (ver
+    # scripts/sincronizar_narracao.py); sem gravação, estima-se pelo texto.
     if tempos:
-        # Os tempos vêm medidos da narração gravada (ver
-        # scripts/sincronizar_narracao.py). Casar o plano com a fala é o que
-        # separa um vídeo legendado de um vídeo montado.
-        if len(tempos) != len(falas):
-            sys.exit(f"{len(tempos)} tempos para {len(falas)} falas")
-        roteiro = []
-        for medido, (_, legenda, visuais) in zip(tempos, falas):
-            fatia = medido / len(visuais)
-            for v in visuais:
-                roteiro.append((fatia, v, legenda))
+        if len(tempos) != len(blocos):
+            sys.exit(f"{len(tempos)} tempos para {len(blocos)} blocos")
+        medidas = tempos
+    else:
+        medidas = [sum(silabas(l) for l, _ in b) / 5.4 for b in blocos]
+
+    roteiro = []
+    for medida, bloco in zip(medidas, blocos):
+        total = sum(silabas(l) for l, _ in bloco)
+        for legenda, visual in bloco:
+            roteiro.append((medida * silabas(legenda) / total, visual, legenda))
 
     tmp = Path(tempfile.mkdtemp(prefix="neuroart-"))
     try:
