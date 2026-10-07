@@ -325,7 +325,8 @@ def plano_fecho(t: float) -> Image.Image:
 # ───────────────────────── a peça ─────────────────────────
 
 
-def montar(obras: dict[str, Obra], saida: Path, voz: Path | None) -> None:
+def montar(obras: dict[str, Obra], saida: Path, voz: Path | None,
+           tempos: list[float] | None = None, trilha: Path | None = None) -> None:
     kanji, abissal, metropole = obras["kanji"], obras["abissal"], obras["metropole"]
 
     # (duração em segundos, função que desenha, legenda)
@@ -353,7 +354,17 @@ def montar(obras: dict[str, Obra], saida: Path, voz: Path | None) -> None:
         (4.0, lambda t: plano_obra(metropole, 0.5 + t * 0.5, 1.0),
          "Parte de cada transação financia pesquisa em neurociência"),
         (3.5, plano_fecho, "Não é especulação. É o contrário dela"),
+        (3.5, lambda t: plano_fecho(0.5 + t * 0.5),
+         "NeuroArt DApp — unindo a arte à ciência"),
     ]
+
+    if tempos:
+        # Os tempos vêm medidos da narração gravada (ver
+        # scripts/sincronizar_narracao.py). Casar o plano com a fala é o que
+        # separa um vídeo legendado de um vídeo montado.
+        if len(tempos) != len(roteiro):
+            sys.exit(f"{len(tempos)} tempos para {len(roteiro)} planos")
+        roteiro = [(t, f, l) for t, (_, f, l) in zip(tempos, roteiro)]
 
     tmp = Path(tempfile.mkdtemp(prefix="neuroart-"))
     try:
@@ -392,13 +403,42 @@ def montar(obras: dict[str, Obra], saida: Path, voz: Path | None) -> None:
 
         saida.parent.mkdir(parents=True, exist_ok=True)
         if voz and voz.exists():
+            # A voz é normalizada ANTES, em passo separado, e não dentro do
+            # grafo de mixagem.
+            #
+            # POR QUE SEPARADO: o loudnorm tem ~3s de lookahead. Quando a saída
+            # dele alimenta um asplit cujas duas pontas são consumidas em
+            # ritmos diferentes (uma vai para o sidechain), a cauda se perde na
+            # descarga final. Medido nesta gravação: 69,57s sem loudnorm no
+            # grafo, 66,67s com ele — quase três segundos de fala sumindo no
+            # fim, calados.
+            normalizada = tmp / "voz-normalizada.wav"
             subprocess.run(
-                ["ffmpeg", "-y", "-loglevel", "error", "-i", str(bruto), "-i", str(voz),
-                 "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy",
-                 "-c:a", "aac", "-b:a", "192k", "-shortest",
-                 "-movflags", "+faststart", str(saida)],
+                ["ffmpeg", "-y", "-loglevel", "error", "-i", str(voz),
+                 "-af", "aformat=sample_fmts=fltp:channel_layouts=stereo,"
+                        "loudnorm=I=-16:TP=-1.5:LRA=11",
+                 str(normalizada)],
                 check=True,
             )
+            cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(bruto),
+                   "-i", str(normalizada)]
+            voz_f = "[1:a]aformat=sample_fmts=fltp:channel_layouts=stereo"
+            if trilha and trilha.exists():
+                cmd += ["-stream_loop", "-1", "-i", str(trilha)]
+                audio = (
+                    f"{voz_f},asplit=2[voz][lado];"
+                    "[2:a]aformat=sample_fmts=fltp:channel_layouts=stereo,"
+                    "volume=0.20[mus];"
+                    "[mus][lado]sidechaincompress="
+                    "threshold=0.03:ratio=12:attack=15:release=350[duck];"
+                    "[voz][duck]amix=inputs=2:duration=first:normalize=0[aout]"
+                )
+            else:
+                audio = f"{voz_f}[aout]"
+            cmd += ["-filter_complex", audio, "-map", "0:v:0", "-map", "[aout]",
+                    "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest",
+                    "-movflags", "+faststart", str(saida)]
+            subprocess.run(cmd, check=True)
         else:
             subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(bruto),
                             "-c", "copy", "-movflags", "+faststart", str(saida)],
@@ -417,6 +457,9 @@ def main() -> None:
                          "metropole-suspensa.jpg")
     ap.add_argument("--saida", type=Path, default=Path.home() / "Downloads/neuroart.mp4")
     ap.add_argument("--voz", type=Path, help="narração gravada, para mixar")
+    ap.add_argument("--trilha", type=Path, help="música de fundo, entra sob a voz")
+    ap.add_argument("--tempos", help="duração de cada plano em segundos, separadas por "
+                                     "vírgula (saída de sincronizar_narracao.py)")
     args = ap.parse_args()
 
     arquivos = {
@@ -432,7 +475,8 @@ def main() -> None:
             sys.exit(f"não achei {base}.* em {args.obras}")
         obras[chave] = Obra(TITULOS[chave], achado, etiqueta, fracoes, valor)
 
-    montar(obras, args.saida, args.voz)
+    tempos = [float(x) for x in args.tempos.split(",")] if args.tempos else None
+    montar(obras, args.saida, args.voz, tempos, args.trilha)
 
 
 if __name__ == "__main__":
