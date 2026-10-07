@@ -481,7 +481,7 @@ def mixar(video: Path, saida: Path, voz: Path, trilha: Path | None,
 
 def montar(obras: dict[str, Obra], saida: Path, voz: Path | None,
            tempos: list[float] | None = None, trilha: Path | None = None,
-           volume: float = 0.45, ducking: float = 4.0) -> None:
+           volume: float = 0.75, ducking: float = 3.5) -> None:
     kanji, abissal, metropole = obras["kanji"], obras["abissal"], obras["metropole"]
 
     # (duração em segundos, função que desenha, legenda)
@@ -626,10 +626,13 @@ def main() -> None:
     ap.add_argument("--saida", type=Path, default=Path.home() / "Downloads/neuroart.mp4")
     ap.add_argument("--voz", type=Path, help="narração gravada, para mixar")
     ap.add_argument("--trilha", type=Path, help="música de fundo, entra sob a voz")
-    ap.add_argument("--volume-trilha", type=float, default=0.45,
-                    help="ganho da música (0.20 discreta, 0.45 presente, 0.70 alta)")
-    ap.add_argument("--ducking", type=float, default=4.0,
-                    help="quanto a música recua sob a voz (12 some, 4 respira junto)")
+    # 0.75 e 3.5 são a mistura aprovada de ouvido pelo usuário em 07/10/2026:
+    # trilha a -26 dB nas pausas, contra voz a -17 dB. Partir daqui nas
+    # próximas peças poupa as tentativas.
+    ap.add_argument("--volume-trilha", type=float, default=0.75,
+                    help="ganho da música (0.20 discreta, 0.45 média, 0.75 presente)")
+    ap.add_argument("--ducking", type=float, default=3.5,
+                    help="quanto a música recua sob a voz (12 some, 3.5 respira junto)")
     ap.add_argument("--remix", type=Path,
                     help="vídeo já montado: refaz SÓ o áudio, em segundos")
     ap.add_argument("--tempos", help="duração de cada plano em segundos, separadas por "
