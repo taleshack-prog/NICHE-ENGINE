@@ -42,13 +42,23 @@ DPI = 120
 # Paleta escura, de terminal — não a de dashboard corporativo. Verde e vermelho
 # são os únicos acentos: num gráfico de velas a cor JÁ carrega significado, e
 # acrescentar outra competiria com ele.
-FUNDO = "#0B0E13"
-GRADE = "#1C222C"
-TEXTO = "#E6EAF2"
-APAGADO = "#6B7585"
+# Dois temas. A cor de alta e de baixa NÃO muda entre eles: num gráfico de
+# velas verde e vermelho carregam significado, e trocá-los por cor de marca
+# custaria leitura para ganhar enfeite. O que a marca veste é o fundo, a grade,
+# o texto e a marcação de período.
+TEMAS = {
+    "mercado": {
+        "fundo": "#0B0E13", "grade": "#1C222C", "texto": "#E6EAF2",
+        "apagado": "#6B7585", "marca": "#F5B301",
+    },
+    # Paleta do NeuroArt: roxo profundo com acento ciano.
+    "neuroart": {
+        "fundo": "#0A0415", "grade": "#2A1240", "texto": "#EFEAFF",
+        "apagado": "#8E7DB5", "marca": "#22E3F0",
+    },
+}
 ALTA = "#2BD98B"
 BAIXA = "#F0484F"
-MARCA = "#F5B301"
 
 # Nome dos meses escrito à mão: strftime("%B") depende do locale do sistema, e
 # num container em inglês devolveu "07 de october de 2026".
@@ -101,6 +111,7 @@ def preparar_fonte() -> str:
 def desenhar(
     velas: list[Vela], visiveis: int, fonte: str, titulo: str,
     destaque: tuple[datetime, datetime] | None, destino: Path,
+    tema: dict[str, str],
 ) -> None:
     """
     Um quadro. `visiveis` é quantas velas já apareceram — é o que cria o
@@ -109,12 +120,12 @@ def desenhar(
     Os eixos são fixos no conjunto inteiro desde o primeiro quadro. Deixar a
     escala acompanhar o que já apareceu faria tudo tremer a cada vela nova.
     """
-    fig = plt.figure(figsize=(LARGURA / DPI, ALTURA / DPI), dpi=DPI, facecolor=FUNDO)
+    fig = plt.figure(figsize=(LARGURA / DPI, ALTURA / DPI), dpi=DPI, facecolor=tema["fundo"])
     # O gráfico ocupa a faixa central: no vertical, topo e rodapé são onde ficam
     # o texto da narração e a interface do aplicativo.
     # Deixa 11% à direita para os preços do eixo — com a caixa mais larga, o
     # rótulo "85000" ficava cortado na borda da tela.
-    ax = fig.add_axes((0.09, 0.26, 0.80, 0.46), facecolor=FUNDO)
+    ax = fig.add_axes((0.09, 0.26, 0.80, 0.46), facecolor=tema["fundo"])
 
     pmin = min(v.baixa for v in velas)
     pmax = max(v.alta for v in velas)
@@ -124,9 +135,9 @@ def desenhar(
 
     for lado in ax.spines.values():
         lado.set_visible(False)
-    ax.grid(True, axis="y", color=GRADE, linewidth=1)
+    ax.grid(True, axis="y", color=tema["grade"], linewidth=1)
     ax.set_axisbelow(True)
-    ax.tick_params(colors=APAGADO, labelsize=11, length=0)
+    ax.tick_params(colors=tema["apagado"], labelsize=11, length=0)
     ax.set_xticks([])
     ax.yaxis.tick_right()
     for r in ax.get_yticklabels():
@@ -139,7 +150,7 @@ def desenhar(
         # antes entregaria o final e mataria a expectativa.
         if ini is not None and visiveis > ini:
             ax.axvspan(ini - 0.5, min(fim, visiveis) - 0.5,
-                       color=MARCA, alpha=0.07, linewidth=0)
+                       color=tema["marca"], alpha=0.07, linewidth=0)
 
     largura_corpo = 0.62
     for i, v in enumerate(velas[:visiveis]):
@@ -153,17 +164,17 @@ def desenhar(
     primeira = velas[0]
     variacao = (atual.fecha / primeira.abre - 1) * 100
 
-    fig.text(0.09, 0.855, titulo, color=APAGADO, fontsize=19, fontname=fonte,
+    fig.text(0.09, 0.855, titulo, color=tema["apagado"], fontsize=19, fontname=fonte,
              va="bottom")
-    fig.text(0.09, 0.775, f"US$ {atual.fecha:,.0f}".replace(",", "."), color=TEXTO,
+    fig.text(0.09, 0.775, f"US$ {atual.fecha:,.0f}".replace(",", "."), color=tema["texto"],
              fontsize=58, fontname=fonte, va="bottom")
     fig.text(0.09, 0.745, f"{variacao:+.1f}%  desde {primeira.quando:%d/%m}",
              color=ALTA if variacao >= 0 else BAIXA, fontsize=21, fontname=fonte,
              va="bottom")
     data = f"{atual.quando.day} de {MESES[atual.quando.month - 1]} de {atual.quando.year}"
-    fig.text(0.09, 0.215, data, color=APAGADO, fontsize=18, fontname=fonte, va="top")
+    fig.text(0.09, 0.215, data, color=tema["apagado"], fontsize=18, fontname=fonte, va="top")
 
-    fig.savefig(destino, facecolor=FUNDO)
+    fig.savefig(destino, facecolor=tema["fundo"])
     plt.close(fig)
 
 
@@ -174,11 +185,13 @@ def main() -> None:
     ap.add_argument("--titulo", default="BITCOIN / DÓLAR")
     ap.add_argument("--destaque", help="AAAA-MM-DD:AAAA-MM-DD")
     ap.add_argument("--segundos", type=float, default=8.0)
+    ap.add_argument("--tema", choices=sorted(TEMAS), default="mercado")
     ap.add_argument("--quadro", type=Path, help="só gera um PNG do último quadro")
     args = ap.parse_args()
 
     velas = carregar(args.velas)
     fonte = preparar_fonte()
+    tema = TEMAS[args.tema]
     faixa = None
     if args.destaque:
         a, b = args.destaque.split(":")
@@ -188,7 +201,7 @@ def main() -> None:
                  datetime.fromisoformat(f"{b}T00:00:00+00:00"))
 
     if args.quadro:
-        desenhar(velas, len(velas), fonte, args.titulo, faixa, args.quadro)
+        desenhar(velas, len(velas), fonte, args.titulo, faixa, args.quadro, tema)
         print(f"quadro: {args.quadro}")
         return
 
@@ -207,7 +220,7 @@ def main() -> None:
                 visiveis = max(1, math.ceil(suave * len(velas)))
             else:
                 visiveis = len(velas)
-            desenhar(velas, visiveis, fonte, args.titulo, faixa, tmp / f"q{q:05d}.png")
+            desenhar(velas, visiveis, fonte, args.titulo, faixa, tmp / f"q{q:05d}.png", tema)
 
         args.saida.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(
