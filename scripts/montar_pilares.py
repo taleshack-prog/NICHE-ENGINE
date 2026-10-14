@@ -206,7 +206,7 @@ def montar(obras: dict, ilustra: Path, saida: Path, voz: Path | None, trilha: Pa
                 img = desenhar(t)
                 entrada = min(1.0, q / (FPS * 0.4))
                 saida_f = min(1.0, (quadros - q) / (FPS * 0.4))
-                mn.escrever_legenda(img, legenda, min(entrada, saida_f))
+                mn.escrever_legenda(img, legenda, min(entrada, saida_f), t)
                 ff.stdin.write(img.tobytes())
             print(f"  {i:2d}. {dur:4.1f}s  {legenda[:54]}")
         ff.stdin.close()

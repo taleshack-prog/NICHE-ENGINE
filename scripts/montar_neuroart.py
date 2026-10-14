@@ -142,57 +142,98 @@ def quebrar(texto: str, fnt: ImageFont.FreeTypeFont, largura: int) -> list[str]:
     return linhas
 
 
-_CACHE_LEGENDA: dict[str, tuple[Image.Image, Image.Image]] = {}
+_CACHE_VEU: dict[int, tuple[Image.Image, Image.Image]] = {}
+_CACHE_PALAVRAS: dict[str, list[tuple[str, float, float]]] = {}
 
 
-def _camada_legenda(texto: str) -> tuple[Image.Image, Image.Image]:
+def _veu(linhas: int) -> tuple[Image.Image, Image.Image]:
     """
-    Monta (cor, máscara) da faixa de legenda UMA vez por texto.
-
-    O véu e o degradê dependem só do texto, não do quadro. Recalcular isso a
-    cada quadro custou nove minutos de render sem terminar — e o resultado era
-    idêntico 1.365 vezes seguidas.
+    A faixa escura sob a legenda, guardada por número de linhas.
 
     O véu existe porque a legenda cai sobre pintura: sem ele, palavra branca
     sobre respingo branco some. Contorno em volta da letra resolveria a
-    leitura, mas sujaria a tipografia; o véu preserva as duas.
+    leitura e sujaria a tipografia; o véu preserva as duas.
+
+    Depende só de quantas linhas o texto ocupa, então duas legendas de duas
+    linhas compartilham o mesmo véu — e recalcular o degradê linha a linha a
+    cada quadro já custou nove minutos de render sem terminar.
     """
-    if texto in _CACHE_LEGENDA:
-        return _CACHE_LEGENDA[texto]
+    if linhas not in _CACHE_VEU:
+        topo = ALTURA - 300 - linhas * 68
+        cor = Image.new("RGB", (LARGURA, ALTURA), FUNDO)
+        mascara = Image.new("L", (LARGURA, ALTURA), 0)
+        dm = ImageDraw.Draw(mascara)
+        inicio = max(topo - 120, 0)
+        for y in range(inicio, ALTURA):
+            t = (y - inicio) / max(ALTURA - inicio, 1)
+            dm.line([(0, y), (LARGURA, y)], fill=int(205 * min(1.0, t * 1.8)))
+        _CACHE_VEU[linhas] = (cor, mascara)
+    return _CACHE_VEU[linhas]
+
+
+def _palavras_posicionadas(texto: str) -> list[tuple[str, float, float]]:
+    """Cada palavra com sua posição na tela, calculada uma vez por legenda."""
+    if texto in _CACHE_PALAVRAS:
+        return _CACHE_PALAVRAS[texto]
 
     fnt = fonte(54)
+    d = ImageDraw.Draw(Image.new("RGB", (1, 1)))
     linhas = quebrar(texto.upper(), fnt, LARGURA - 180)
     topo = ALTURA - 300 - len(linhas) * 68
 
-    cor = Image.new("RGB", (LARGURA, ALTURA), FUNDO)
-    mascara = Image.new("L", (LARGURA, ALTURA), 0)
-    dm = ImageDraw.Draw(mascara)
-    inicio = max(topo - 120, 0)
-    for y in range(inicio, ALTURA):
-        t = (y - inicio) / max(ALTURA - inicio, 1)
-        dm.line([(0, y), (LARGURA, y)], fill=int(205 * min(1.0, t * 1.8)))
-
-    dc = ImageDraw.Draw(cor)
+    saida = []
     for i, linha in enumerate(linhas):
-        larg = dc.textlength(linha, font=fnt)
-        x, y = (LARGURA - larg) / 2, topo + i * 68
-        dc.text((x, y), linha, font=fnt, fill=TEXTO)
-        dm.text((x, y), linha, font=fnt, fill=255)
+        largura_linha = d.textlength(linha, font=fnt)
+        x = (LARGURA - largura_linha) / 2
+        for palavra in linha.split():
+            saida.append((palavra, x, topo + i * 68))
+            x += d.textlength(palavra + " ", font=fnt)
+    _CACHE_PALAVRAS[texto] = saida
+    return saida
 
-    _CACHE_LEGENDA[texto] = (cor, mascara)
-    return cor, mascara
 
+def escrever_legenda(img: Image.Image, texto: str, opacidade: float = 1.0,
+                     avanco: float = 1.0) -> None:
+    """
+    Legenda revelada PALAVRA POR PALAVRA, acompanhando a fala.
 
-def escrever_legenda(img: Image.Image, texto: str, opacidade: float = 1.0) -> None:
+    Legenda estática aparece inteira e o olho a lê de uma vez, antes da voz
+    chegar — depois sobra tempo olhando texto já lido. Revelando no ritmo da
+    fala, a leitura anda junto com o que se ouve, e é por isso que todo vídeo
+    curto de retenção alta faz assim. Custa código, não dinheiro.
+
+    `avanco` é a fração das palavras já reveladas. As palavras terminam de
+    entrar em 60% do plano: revelar até o fim deixaria a última palavra
+    aparecendo no corte, sem tempo de ser lida.
+    """
     if opacidade <= 0:
         return
-    cor, mascara = _camada_legenda(texto)
+    palavras = _palavras_posicionadas(texto)
+    if not palavras:
+        return
+
+    n_linhas = len({y for _, _, y in palavras})
+    cor_veu, mascara = _veu(n_linhas)
     if opacidade < 1.0:
         mascara = mascara.point(lambda v: int(v * opacidade))
-    img.paste(cor, (0, 0), mascara)
+    img.paste(cor_veu, (0, 0), mascara)
+
+    visiveis = max(1, min(len(palavras),
+                          int(len(palavras) * min(1.0, avanco / 0.6) + 0.5)))
+    alfa = int(255 * max(0.0, min(1.0, opacidade)))
+    camada = Image.new("RGBA", (LARGURA, ALTURA), (0, 0, 0, 0))
+    d = ImageDraw.Draw(camada)
+    fnt = fonte(54)
+    for palavra, x, y in palavras[:visiveis]:
+        d.text((x, y), palavra, font=fnt, fill=(*TEXTO, alfa))
+    img.paste(Image.alpha_composite(img.convert("RGBA"), camada).convert("RGB"))
 
 
-AMPLIACAO_MAXIMA = 1.15
+# 1.0 = nenhuma obra é esticada, nunca. Comecei em 1,15 achando que a perda
+# seria imperceptível; num quadro ampliado no limite dava para ver a pincelada
+# amolecer. Numa peça cujo argumento é "a obra existe de verdade", imagem mole
+# contradiz o texto.
+AMPLIACAO_MAXIMA = 1.0
 
 
 def _emoldurada(obra: Obra, t: float) -> Image.Image:
@@ -597,7 +638,7 @@ def montar(obras: dict[str, Obra], saida: Path, voz: Path | None,
                 # corte vira piscada.
                 entrada = min(1.0, q / (FPS * 0.4))
                 saida_f = min(1.0, (quadros - q) / (FPS * 0.4))
-                escrever_legenda(img, legenda, min(entrada, saida_f))
+                escrever_legenda(img, legenda, min(entrada, saida_f), t)
                 ff.stdin.write(img.tobytes())
             print(f"  {i:2d}. {dur:4.1f}s  {legenda[:54]}")
         ff.stdin.close()
