@@ -69,6 +69,20 @@ DADOS = [
 ]
 GERAL = Efeito("EFEITO GERAL", -0.49, -0.72, -0.26)
 
+# O texto em volta do gráfico. Fica aqui, e não escrito dentro de `desenhar`,
+# para a pauta de um episódio novo poder trazer os seus — o gráfico é a forma,
+# não o conteúdo.
+TEXTOS = {
+    "chapeu": "EXERCÍCIO E CONTROLE INIBITÓRIO",
+    "manchete": "Só uma modalidade",
+    "destaque": "funcionou",
+    "notas": [
+        "18 estudos · 499 crianças autistas",
+        "8 ensaios randomizados · diferença média padronizada",
+        "intervalo de confiança de 95%",
+    ],
+}
+
 
 def preparar_fonte() -> str:
     for f in FONTES:
@@ -78,7 +92,12 @@ def preparar_fonte() -> str:
     return "DejaVu Sans"
 
 
-def desenhar(revelados: float, fonte: str, destino: Path) -> None:
+def desenhar(revelados: float, fonte: str, destino: Path,
+             dados: list[Efeito] | None = None, geral: Efeito | None = None,
+             textos: dict | None = None) -> None:
+    dados = DADOS if dados is None else dados
+    geral = GERAL if geral is None else geral
+    textos = {**TEXTOS, **(textos or {})}
     fig = plt.figure(figsize=(LARGURA / DPI, ALTURA / DPI), dpi=DPI, facecolor=FUNDO)
     # A caixa termina em 0.86 para sobrar margem: os valores ficam FORA do
     # eixo, e com a caixa mais larga o "-0.54" era cortado pela borda da tela.
@@ -86,7 +105,7 @@ def desenhar(revelados: float, fonte: str, destino: Path) -> None:
     # de x=879, onde começa a coluna de botões do player de Shorts.
     ax = fig.add_axes((0.26, 0.40, 0.47, 0.28), facecolor=FUNDO)
 
-    linhas = DADOS + [GERAL]
+    linhas = list(dados) + [geral]
     ax.set_xlim(-1.15, 0.55)
     ax.set_ylim(-0.8, len(linhas) - 0.2)
     ax.invert_yaxis()
@@ -110,8 +129,8 @@ def desenhar(revelados: float, fonte: str, destino: Path) -> None:
                 solid_capstyle="round")
         for x in (e.baixo, e.alto):
             ax.plot([x, x], [i - 0.12, i + 0.12], color=cor, linewidth=espessura)
-        ax.plot([e.smd], [i], marker="D" if e is GERAL else "o",
-                markersize=13 if e is GERAL else 11, color=cor)
+        ax.plot([e.smd], [i], marker="D" if e is geral else "o",
+                markersize=13 if e is geral else 11, color=cor)
 
         ax.text(-1.22, i, e.rotulo, color=TEXTO if e.significativo else APAGADO,
                 fontsize=17, fontname=fonte, va="center", ha="right")
@@ -121,17 +140,15 @@ def desenhar(revelados: float, fonte: str, destino: Path) -> None:
 
     # Todo texto cabe entre x=60 e x=879: além disso fica atrás da coluna de
     # botões do player, e acima de y=380 atrás dos controles do topo.
-    fig.text(0.07, 0.775, "EXERCÍCIO E CONTROLE INIBITÓRIO", color=APAGADO,
+    fig.text(0.07, 0.775, textos["chapeu"], color=APAGADO,
              fontsize=19, fontname=fonte)
-    fig.text(0.07, 0.715, "Só uma modalidade", color=TEXTO, fontsize=46,
+    fig.text(0.07, 0.715, textos["manchete"], color=TEXTO, fontsize=46,
              fontname=fonte)
-    fig.text(0.07, 0.672, "funcionou", color=CIANO, fontsize=46, fontname=fonte)
-    fig.text(0.07, 0.345, "18 estudos · 499 crianças autistas",
-             color=APAGADO, fontsize=17, fontname=fonte, va="top")
-    fig.text(0.07, 0.317, "8 ensaios randomizados · diferença média padronizada",
-             color=APAGADO, fontsize=15, fontname=fonte, va="top")
-    fig.text(0.07, 0.292, "intervalo de confiança de 95%",
-             color=APAGADO, fontsize=15, fontname=fonte, va="top")
+    fig.text(0.07, 0.672, textos["destaque"], color=CIANO, fontsize=46,
+             fontname=fonte)
+    for i, nota in enumerate(textos["notas"][:3]):
+        fig.text(0.07, (0.345, 0.317, 0.292)[i], nota, color=APAGADO,
+                 fontsize=17 if i == 0 else 15, fontname=fonte, va="top")
 
     fig.savefig(destino, facecolor=FUNDO)
     plt.close(fig)

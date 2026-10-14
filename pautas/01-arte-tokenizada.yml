@@ -1,0 +1,102 @@
+# Episódio 1 — publicado em 07/10/2026, com narração gravada.
+#
+# Transcrição do que `scripts/montar_neuroart.py` fazia em código. O texto é o
+# da SEGUNDA versão do roteiro: a primeira eram onze sentenças fechadas, uma
+# por legenda, e o usuário não conseguiu gravar — "as frases estão muito
+# duras, não conectam, não fica natural". A regra 2 do linter existe por causa
+# dessa gravação que travou.
+
+titulo: A obra tokenizada
+
+angulo: >
+  A maioria dos tokens não lastreia nada; cada NEURO é fração de uma tela que
+  existe numa parede — e quem escolhe em quantas partes ela se divide é o
+  artista, não o projeto nem o comprador.
+
+fontes:
+  produto:
+    titulo: NeuroArt DApp
+    onde: dados do próprio projeto — obras tokenizadas na Base
+    url: https://neuro-art-d-app.vercel.app/
+
+produto:
+  entregue:
+    - tokenização
+    - fracionamento
+    - fundo de pesquisa
+    - etiqueta de estado mental
+    - resgate
+  roadmap:
+    - interface cérebro-computador
+
+obras:
+  kanji: {arquivo: white-kanji, titulo: White Kanji, etiqueta: Estado de Fluxo, fracoes: 100, valor: 19800}
+  abissal: {arquivo: frequencia-abissal, titulo: Frequência Abissal, etiqueta: Hiperfoco, fracoes: 1000, valor: 18200}
+  metropole: {arquivo: metropole-suspensa, titulo: Metrópole Suspensa, etiqueta: Hiperfoco, fracoes: 1000, valor: 17500}
+
+blocos:
+  - fonte: produto
+    fala: >
+      Esse quadro está na blockchain /
+      Foi dividido em cem pedaços /
+      e cada pedaço custa cento e noventa e oito reais
+    visuais:
+      - detalhe:kanji,0.15
+      - detalhe:kanji,0.62,0.62
+      - placa:VALOR DA OBRA|R$ 19.800|100 frações · R$ 198,00 cada
+
+  - fonte: produto
+    fala: >
+      Mas quem decidiu que são cem não fui eu, nem o comprador /
+      Foi o artista /
+      Nessa tela ele quis cem pedaços. Em outra, mil
+    visuais:
+      - obra:kanji,0.5#0-0.4
+      - grades#0-0.5
+      - grades#0.5-1
+
+  - fonte: produto
+    fala: >
+      E quem compra um pedaço não leva figurinha digital /
+      Leva fração de uma tela que existe /
+      pendurada numa parede /
+      Tanto que, juntando as cem frações /
+      queima os tokens e leva a tela para casa
+    visuais:
+      - detalhe:abissal,0.2,0.64
+      - obra:abissal,0.5
+      - detalhe:abissal,0.78,0.60
+      - placa:RESGATE|100% das frações|queima os tokens e retira a obra física
+      - obra:kanji,1.0#0.4-1
+
+  - fonte: produto
+    fala: De cada venda, oitenta por cento vai para o artista
+    visuais:
+      - divisao
+
+  - fala: >
+      E olha a etiqueta de cada obra /
+      hiperfoco, estado de fluxo /
+      Elas são catalogadas pelo estado mental em que foram pintadas /
+      porque os artistas são neurodivergentes
+    visuais:
+      - detalhe:metropole,0.3,0.60
+      - etiquetas#0-0.5
+      - etiquetas#0.5-1
+      - placa:ARTISTAS|Neurodivergentes|hiperfoco · estado de fluxo
+
+  - fala: >
+      Parte de cada transação financia /
+      pesquisa em neurociência
+    visuais:
+      - obra:metropole,0.5#0-0.5
+      - placa:DESTINO DAS TAXAS|Pesquisa|parte de cada transação vai para o fundo de pesquisa em neurociência
+
+  - fala: >
+      Então não, isso não é especulação /
+      É o contrário dela /
+      NeuroArt DApp — unindo a arte à ciência
+    visuais:
+      - detalhe:kanji,0.9,0.62
+      - placa:|Cada NEURO é fração de uma obra real|a maioria dos tokens não lastreia nada|verde
+      - fecho

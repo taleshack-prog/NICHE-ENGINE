@@ -1,0 +1,139 @@
+# Episódio 2 — publicado em 09/10/2026.
+#
+# Esta pauta é a transcrição do que `scripts/montar_pilares.py` fazia em
+# código. Serve de referência do formato e de teste de regressão: montada por
+# `niche montar`, tem que sair igual ao vídeo publicado.
+#
+# A ORDEM DOS PILARES MUDOU em relação à pauta original escrita à mão. Nela o
+# jiu-jitsu era o terceiro de quatro; a pesquisa mostrou que é o único com
+# meta-análise por trás. Numa peça de 70 segundos, o argumento mais forte vai
+# primeiro — e é isso que o `angulo` abaixo registra.
+
+titulo: Os pilares científicos do NeuroArt
+
+angulo: >
+  Dos quatro pilares, só as artes marciais têm meta-análise por trás — e o
+  episódio diz isso em voz alta, em vez de listar os quatro com o mesmo peso
+  aparente. Os outros três têm indício, e é justamente por isso que o fundo de
+  pesquisa existe.
+
+fontes:
+  meta-analise:
+    titulo: Exercise intervention and inhibitory control in children and adolescents with autism
+    onde: meta-análise — 18 estudos, 499 participantes, 8 ensaios randomizados (n=284)
+    url: https://pubmed.ncbi.nlm.nih.gov/
+  ecr-judo:
+    titulo: Judo training and working memory in children with ADHD
+    onde: ensaio controlado — 57 crianças de 8 a 12 anos, EEG de 64 eletrodos
+    url: https://pubmed.ncbi.nlm.nih.gov/
+  produto:
+    titulo: NeuroArt DApp
+    onde: dados do próprio projeto
+    url: https://neuro-art-d-app.vercel.app/
+
+produto:
+  entregue:
+    - jiu-jitsu
+    - artes marciais
+    - criação visual
+    - ambiente
+    - fundo de pesquisa
+  roadmap:
+    - interface cérebro-computador
+
+obras:
+  kanji: {arquivo: white-kanji, titulo: White Kanji, etiqueta: Estado de Fluxo, fracoes: 100, valor: 19800}
+  abissal: {arquivo: frequencia-abissal, titulo: Frequência Abissal, etiqueta: Hiperfoco, fracoes: 1000, valor: 18200}
+  metropole: {arquivo: metropole-suspensa, titulo: Metrópole Suspensa, etiqueta: Hiperfoco, fracoes: 1000, valor: 17500}
+
+# O forest plot. A convenção é da própria literatura: efeito à ESQUERDA do
+# zero é melhora (a medida é tempo de erro, onde menos é melhor), e intervalo
+# que cruza o zero sai apagado e marcado "n.s.", porque não sustenta conclusão.
+grafico:
+  chapeu: EXERCÍCIO E CONTROLE INIBITÓRIO
+  manchete: Só uma modalidade
+  destaque: funcionou
+  notas:
+    - 18 estudos · 499 crianças autistas
+    - 8 ensaios randomizados · diferença média padronizada
+    - intervalo de confiança de 95%
+  linhas:
+    - {rotulo: ARTES MARCIAIS, smd: -0.54, baixo: -0.92, alto: -0.14}
+    - {rotulo: ESPORTES DE BOLA, smd: -0.38, baixo: -0.84, alto: 0.08}
+    - {rotulo: COMBINADOS, smd: -0.40, baixo: -0.88, alto: 0.09}
+  geral: {rotulo: EFEITO GERAL, smd: -0.49, baixo: -0.72, alto: -0.26}
+
+blocos:
+  - fonte: meta-analise
+    fala: >
+      Testaram vários tipos de exercício em crianças autistas /
+      medindo controle inibitório /
+      Dezoito estudos, quase quinhentas crianças
+    visuais:
+      - placa:META-ANÁLISE|18 estudos|exercício e controle inibitório no autismo
+      - placa:PARTICIPANTES|499 crianças|8 ensaios randomizados na meta-análise
+      - floresta#0-0.25
+
+  - fonte: meta-analise
+    fala: >
+      Esporte de bola não deu resultado /
+      Modalidade combinada também não /
+      Só uma coisa funcionou: arte marcial /
+      -
+    visuais:
+      - floresta#0.25-0.60
+      - floresta#0.60-0.85
+      - floresta#0.85-1
+      - ilustra:judo-energia.png
+
+  - fonte: ecr-judo
+    fala: >
+      E num ensaio randomizado com crianças com TDAH /
+      doze semanas de judô melhoraram a memória de trabalho /
+      O eletroencefalograma confirmou /
+      a mudança apareceu no cérebro, não só no teste
+    visuais:
+      - placa:ENSAIO CONTROLADO|57 crianças|TDAH, 8 a 12 anos, com grupo controle
+      - placa:INTERVENÇÃO|12 semanas|duas sessões de judô por semana
+      - placa:MEDIDA NEURAL|EEG, 64 eletrodos|atividade de retardo contralateral
+      - ilustra:mente-cores.png
+
+  - fonte: meta-analise
+    fala: >
+      Por isso o jiu-jitsu é um dos pilares do NeuroArt /
+      Não é tema de marketing /
+      é o pilar com a evidência mais forte que a gente tem
+    visuais:
+      - placa:PILAR|Artes marciais|controle inibitório e regulação sensorial
+      - ilustra:judo-crianca.png
+      - floresta#1-1
+
+  # O pilar da criação visual tem indício, não prova — e é por isso que existe
+  # o fundo de pesquisa. Enquadrar o indício como MOTIVO do fundo, e não como
+  # fraqueza a esconder, é a posição honesta e liga este episódio ao anterior.
+  - fonte: produto
+    fala: >
+      Os outros três são a criação visual /
+      há indícios na literatura, e aprofundá-los é o que o fundo financia /
+      o ambiente, desenhado para reduzir sobrecarga sensorial /
+      e a interface cérebro-computador /
+      que ainda não existe. É o próximo passo
+    visuais:
+      - placa:PILAR|Criação visual|há indícios na literatura; aprofundá-los é o objetivo do fundo de pesquisa
+      - ilustra:pintura-crianca.png
+      - ilustra:arvore-calma.png
+      - placa:PILAR|Interface cérebro-computador|registro de estados de foco com dados anonimizados
+      # O roxo apagado em vez do ciano marca VISUALMENTE que este pilar ainda
+      # não existe. A honestidade entra como plano, não como ressalva.
+      - placa:ROADMAP|Ainda não existe|a interface cérebro-computador é o próximo passo, não uma entrega|apagado
+
+  - fala: >
+      A arte é o que o projeto tokeniza /
+      A ciência é o que ele investiga
+    visuais:
+      - etiquetas
+      - floresta#1-1
+
+  - fala: NeuroArt DApp — unindo a arte à ciência
+    visuais:
+      - fecho

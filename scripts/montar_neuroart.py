@@ -335,19 +335,42 @@ def plano_placa(titulo: str, destaque: str, rodape: str, t: float,
     """
     img = tela()
     d = ImageDraw.Draw(img)
-    f_tit, f_des, f_rod = fonte(34), fonte(76), fonte(32)
+    f_tit, f_rod = fonte(34), fonte(32)
+
+    # A placa quebra na ZONA SEGURA, não na largura do quadro.
+    #
+    # Quebrava em LARGURA-220 (860px de caixa a partir de x=110, borda em 970).
+    # Medido nas catorze placas dos dois episódios: quatro passavam de x=879 e
+    # chegavam a 964 — "Interface cérebro-computador" e "Ainda não existe" entre
+    # elas, as duas da placa de roadmap, cujo texto inteiro existe para ser
+    # honesto sobre o que o projeto não entrega. Metade dela ficava atrás da
+    # coluna de botões no celular.
+    caixa = SEGURO_X1 - 110
+
+    # O corpo do destaque DIMINUI até caber na caixa.
+    #
+    # Quebrar por palavra não basta: "cérebro-computador" é uma palavra só, e a
+    # 76px ela mede 841px — maior que a caixa, então sai inteira por cima da
+    # borda sem jeito de quebrar. Em vez de encurtar o texto (seria o conteúdo
+    # cedendo ao desenho), o corpo cai de 8 em 8 até a palavra mais larga caber.
+    f_des, linhas_des = fonte(76), quebrar(destaque, fonte(76), caixa)
+    for tam in (76, 68, 60, 54, 48):
+        f_des = fonte(tam)
+        linhas_des = quebrar(destaque, f_des, caixa)
+        if all(d.textlength(l, font=f_des) <= caixa for l in linhas_des):
+            break
+    altura_des = int(f_des.size * 1.21)
 
     surge = min(1.0, t * 2.2)
     d.text((110, 560), titulo.upper(), font=f_tit, fill=cor)
     d.line([(110, 620), (110 + int(300 * surge), 620)], fill=cor, width=3)
 
-    linhas_des = quebrar(destaque, f_des, LARGURA - 220)
     for i, linha in enumerate(linhas_des):
-        d.text((110, 680 + i * 92), linha, font=f_des, fill=TEXTO)
+        d.text((110, 680 + i * altura_des), linha, font=f_des, fill=TEXTO)
     # O rodapé acompanha o destaque. Ancorado numa altura fixa, abria um vão de
     # 400px quando o destaque era curto.
-    base = 680 + len(linhas_des) * 92 + 34
-    for i, linha in enumerate(quebrar(rodape, f_rod, LARGURA - 220)):
+    base = 680 + len(linhas_des) * altura_des + 34
+    for i, linha in enumerate(quebrar(rodape, f_rod, caixa)):
         d.text((110, base + i * 46), linha, font=f_rod, fill=APAGADO)
     return img
 
