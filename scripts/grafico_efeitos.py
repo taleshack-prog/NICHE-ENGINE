@@ -82,7 +82,9 @@ def desenhar(revelados: float, fonte: str, destino: Path) -> None:
     fig = plt.figure(figsize=(LARGURA / DPI, ALTURA / DPI), dpi=DPI, facecolor=FUNDO)
     # A caixa termina em 0.86 para sobrar margem: os valores ficam FORA do
     # eixo, e com a caixa mais larga o "-0.54" era cortado pela borda da tela.
-    ax = fig.add_axes((0.30, 0.34, 0.56, 0.30), facecolor=FUNDO)
+    # A caixa termina em 0.73 (789px) para os valores à direita caberem antes
+    # de x=879, onde começa a coluna de botões do player de Shorts.
+    ax = fig.add_axes((0.26, 0.40, 0.47, 0.28), facecolor=FUNDO)
 
     linhas = DADOS + [GERAL]
     ax.set_xlim(-1.15, 0.55)
@@ -117,14 +119,18 @@ def desenhar(revelados: float, fonte: str, destino: Path) -> None:
         ax.text(0.42, i, marca, color=cor, fontsize=17, fontname=fonte,
                 va="center", ha="left")
 
-    fig.text(0.08, 0.80, "EXERCÍCIO E CONTROLE INIBITÓRIO", color=APAGADO,
-             fontsize=20, fontname=fonte)
-    fig.text(0.08, 0.735, "Só uma modalidade", color=TEXTO, fontsize=54,
+    # Todo texto cabe entre x=60 e x=879: além disso fica atrás da coluna de
+    # botões do player, e acima de y=380 atrás dos controles do topo.
+    fig.text(0.07, 0.775, "EXERCÍCIO E CONTROLE INIBITÓRIO", color=APAGADO,
+             fontsize=19, fontname=fonte)
+    fig.text(0.07, 0.715, "Só uma modalidade", color=TEXTO, fontsize=46,
              fontname=fonte)
-    fig.text(0.08, 0.685, "funcionou", color=CIANO, fontsize=54, fontname=fonte)
-    fig.text(0.08, 0.285, "18 estudos · 499 crianças autistas · 8 ensaios randomizados",
+    fig.text(0.07, 0.672, "funcionou", color=CIANO, fontsize=46, fontname=fonte)
+    fig.text(0.07, 0.345, "18 estudos · 499 crianças autistas",
              color=APAGADO, fontsize=17, fontname=fonte, va="top")
-    fig.text(0.08, 0.255, "diferença média padronizada, intervalo de 95%",
+    fig.text(0.07, 0.317, "8 ensaios randomizados · diferença média padronizada",
+             color=APAGADO, fontsize=15, fontname=fonte, va="top")
+    fig.text(0.07, 0.292, "intervalo de confiança de 95%",
              color=APAGADO, fontsize=15, fontname=fonte, va="top")
 
     fig.savefig(destino, facecolor=FUNDO)

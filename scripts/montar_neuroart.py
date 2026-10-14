@@ -142,6 +142,21 @@ def quebrar(texto: str, fnt: ImageFont.FreeTypeFont, largura: int) -> list[str]:
     return linhas
 
 
+# ZONA SEGURA DO PLAYER DE SHORTS, medida em 1080x1920.
+#
+# O YouTube desenha a própria interface POR CIMA do vídeo: cerca de 390px na
+# base (avatar, nome do canal, título, botão de inscrever) e 200px à direita
+# (curtir, comentar, compartilhar, remix). Texto ali fica atrás da interface
+# no celular — e no desktop não dá para perceber, porque lá o título fica
+# FORA do quadro. Foi assim que passou despercebido até agora.
+#
+# As legendas terminavam em y=1620 e x=990: a última linha de cada uma e a
+# borda direita do texto ficavam cobertas em todo telefone.
+SEGURO_BASE = 1500          # nada legível abaixo disto
+SEGURO_X0, SEGURO_X1 = 60, 879
+SEGURO_CENTRO = (SEGURO_X0 + SEGURO_X1) // 2
+SEGURO_LARGURA = 780
+
 _CACHE_VEU: dict[int, tuple[Image.Image, Image.Image]] = {}
 _CACHE_PALAVRAS: dict[str, list[tuple[str, float, float]]] = {}
 
@@ -159,7 +174,7 @@ def _veu(linhas: int) -> tuple[Image.Image, Image.Image]:
     cada quadro já custou nove minutos de render sem terminar.
     """
     if linhas not in _CACHE_VEU:
-        topo = ALTURA - 300 - linhas * 68
+        topo = SEGURO_BASE - linhas * 68
         cor = Image.new("RGB", (LARGURA, ALTURA), FUNDO)
         mascara = Image.new("L", (LARGURA, ALTURA), 0)
         dm = ImageDraw.Draw(mascara)
@@ -178,13 +193,15 @@ def _palavras_posicionadas(texto: str) -> list[tuple[str, float, float]]:
 
     fnt = fonte(54)
     d = ImageDraw.Draw(Image.new("RGB", (1, 1)))
-    linhas = quebrar(texto.upper(), fnt, LARGURA - 180)
-    topo = ALTURA - 300 - len(linhas) * 68
+    linhas = quebrar(texto.upper(), fnt, SEGURO_LARGURA)
+    topo = SEGURO_BASE - len(linhas) * 68
 
     saida = []
     for i, linha in enumerate(linhas):
         largura_linha = d.textlength(linha, font=fnt)
-        x = (LARGURA - largura_linha) / 2
+        # Centrado na zona segura, não no quadro: a coluna de botões ocupa os
+        # 200px da direita, então o centro útil fica à esquerda do centro real.
+        x = SEGURO_CENTRO - largura_linha / 2
         for palavra in linha.split():
             saida.append((palavra, x, topo + i * 68))
             x += d.textlength(palavra + " ", font=fnt)
