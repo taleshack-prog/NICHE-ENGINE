@@ -78,18 +78,29 @@ def durar_blocos(p: Pauta, tempos: list[float] | None, com_voz: bool) -> list[fl
     ]
 
 
-def planejar(p: Pauta, ctx: Contexto, medidas: list[float]) -> list[Plano]:
-    planos = []
-    for medida, bloco in zip(medidas, p.blocos):
+def cronometrar(p: Pauta, medidas: list[float]) -> list[tuple[int, float, str, str]]:
+    """
+    (bloco, duração, visual, legenda) de cada plano — SEM tocar em arquivo.
+
+    Separado de `planejar` porque o dashboard precisa da régua de tempo para
+    desenhar a linha do episódio, e abrir as três obras em alta resolução para
+    isso seria absurdo: a duração sai do texto, não da imagem.
+    """
+    linha = []
+    for i, (medida, bloco) in enumerate(zip(medidas, p.blocos), start=1):
         legendas = bloco.legendas
         fixos = [0.0 if l.strip() else SEM_LEGENDA for l in legendas]
         restante = medida - sum(fixos)
         total = sum(mn.silabas(l) for l in legendas if l.strip()) or 1
         for legenda, spec, fixo in zip(legendas, bloco.visuais, fixos):
             dur = fixo or restante * mn.silabas(legenda) / total
-            planos.append(Plano(max(dur, MINIMO_POR_PLANO),
-                                resolver(spec, ctx), legenda))
-    return planos
+            linha.append((i, max(dur, MINIMO_POR_PLANO), spec, legenda))
+    return linha
+
+
+def planejar(p: Pauta, ctx: Contexto, medidas: list[float]) -> list[Plano]:
+    return [Plano(dur, resolver(spec, ctx), legenda)
+            for _, dur, spec, legenda in cronometrar(p, medidas)]
 
 
 def renderizar(planos: list[Plano], destino: Path, silencioso: bool = False) -> float:

@@ -42,3 +42,8 @@ yarn-error.log*
 # Python (os scripts de montagem)
 __pycache__/
 *.pyc
+
+# episódios montados e logs de montagem (saída do dashboard do canal)
+/renders/*
+!/renders/.gitkeep
+/.niche-jobs/

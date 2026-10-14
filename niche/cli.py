@@ -47,7 +47,45 @@ def _conferir(p, forcar: bool) -> None:
 # ── validar ──────────────────────────────────────────────────────────────────
 
 
+def cmd_listar(args) -> None:
+    """Todas as pautas em JSON — é o que o dashboard lê para montar a lista."""
+    from . import relatorio
+    print(relatorio.despejar(relatorio.listar()))
+
+
+def cmd_ver(args) -> None:
+    """Uma pauta em JSON, com a régua de planos e os achados do linter."""
+    from . import relatorio
+    if not args.pauta.exists():
+        sys.exit(f"não achei a pauta: {args.pauta}")
+    print(relatorio.despejar(relatorio.detalhe(args.pauta)))
+
+
+def cmd_novo(args) -> None:
+    """Cria o esqueleto de uma pauta — o mesmo que o botão do dashboard usa."""
+    from . import modelo
+    from .relatorio import PASTA_PAUTAS, despejar, detalhe
+
+    try:
+        destino = modelo.criar(PASTA_PAUTAS, args.titulo, args.slug)
+    except (FileExistsError, ValueError) as e:
+        sys.exit(str(e))
+    if args.json:
+        print(despejar(detalhe(destino)))
+    else:
+        print(f"criada: {destino}\nabra, escreva o ângulo e rode: "
+              f"python3 -m niche validar {destino}")
+
+
 def cmd_validar(args) -> None:
+    if args.json:
+        from . import relatorio
+        if not args.pauta.exists():
+            sys.exit(f"não achei a pauta: {args.pauta}")
+        d = relatorio.detalhe(args.pauta)
+        print(relatorio.despejar(d))
+        sys.exit(1 if d["erros"] else 0)
+
     p = _abrir(args.pauta)
     print(f"{p.titulo}\n{len(p.blocos)} blocos, "
           f"{sum(len(b.visuais) for b in p.blocos)} planos\n")
@@ -79,7 +117,14 @@ def cmd_falar(args) -> None:
         seg = mn.silabas(b.corrido) / p.ritmo_fala
         total += seg
         print(f"[{i}]  ~{seg:.0f}s")
-        print(f"{b.corrido}\n")
+        # Um corte por linha, como teleprompter. A fala corrida não tem
+        # pontuação nos cortes (de propósito: o corte é no meio da
+        # respiração), e numa linha só ela vira um amontoado difícil de ler em
+        # voz alta — que é exatamente o problema que este comando resolve.
+        for corte in b.legendas:
+            if corte.strip():
+                print(f"  {corte}")
+        print()
     print(f"total estimado: {total:.0f}s de fala "
           f"({len(p.blocos)} pausas marcadas)")
 
@@ -168,7 +213,21 @@ def main(argv: list[str] | None = None) -> None:
 
     v = sub.add_parser("validar", help="passa a pauta pelas quatro regras")
     v.add_argument("pauta", type=Path)
+    v.add_argument("--json", action="store_true", help="saída para o dashboard")
     v.set_defaults(func=cmd_validar)
+
+    ls = sub.add_parser("listar", help="todas as pautas, em JSON")
+    ls.set_defaults(func=cmd_listar)
+
+    ve = sub.add_parser("ver", help="uma pauta em JSON, com a régua de planos")
+    ve.add_argument("pauta", type=Path)
+    ve.set_defaults(func=cmd_ver)
+
+    no = sub.add_parser("novo", help="cria o esqueleto de uma pauta")
+    no.add_argument("titulo")
+    no.add_argument("--slug", help="nome do arquivo; sai do título se omitido")
+    no.add_argument("--json", action="store_true")
+    no.set_defaults(func=cmd_novo)
 
     f = sub.add_parser("falar", help="imprime o texto corrido para gravar")
     f.add_argument("pauta", type=Path)

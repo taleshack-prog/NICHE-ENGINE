@@ -109,6 +109,10 @@ class Pauta:
     obras: dict[str, ObraRef] = field(default_factory=dict)
     grafico: dict[str, Any] = field(default_factory=dict)
     fecho: str = ""
+    # Título, descrição e link da publicação. Mora na própria pauta: um
+    # episódio é um arquivo só, e assim o que foi ao ar fica junto do que foi
+    # dito. Preenchido pelo dashboard.
+    publicacao: dict[str, Any] = field(default_factory=dict)
     # Mistura aprovada de ouvido em 07/10/2026; fica na pauta para cada
     # episódio poder divergir sem mexer em código.
     volume_trilha: float = 0.75
@@ -192,6 +196,7 @@ def carregar(arquivo: Path) -> Pauta:
         obras=obras,
         grafico=bruto.get("grafico") or {},
         fecho=str(bruto.get("fecho") or ""),
+        publicacao=bruto.get("publicacao") or {},
         volume_trilha=float(bruto.get("volume_trilha", 0.75)),
         ducking=float(bruto.get("ducking", 3.5)),
         ritmo_fala=float(bruto.get("ritmo_fala", 5.4)),

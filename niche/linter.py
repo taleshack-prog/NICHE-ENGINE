@@ -91,6 +91,13 @@ _RE_NUMERAL = re.compile(r"\b(" + "|".join(NUMERAIS) + r")\b", re.IGNORECASE)
 _RE_DIGITO = re.compile(r"\d")
 _RE_PERCENTUAL = re.compile(r"por cento|%", re.IGNORECASE)
 
+# Marcas do esqueleto que `niche novo` cria. Uma pauta que ainda as contém não
+# foi escrita — e sem esta checagem ela PASSARIA: o texto-lembrete tem mais de
+# 40 caracteres e não repete o título, que é tudo o que a regra do ângulo
+# consegue medir sozinha.
+PLACEHOLDERS = ("escreva aqui", "preencha", "lorem ipsum", "pedaço da fala",
+                "chapéu|destaque", "a definir", "tbd")
+
 # Legenda com mais linhas que isso é parede de texto: o olho lê o bloco
 # inteiro antes de a voz chegar na metade.
 LINHAS_MAXIMAS = 4
@@ -298,7 +305,24 @@ def regra_fontes(p: Pauta) -> list[Achado]:
 
 # ── a verificação inteira ────────────────────────────────────────────────────
 
-REGRAS = (regra_angulo, regra_fala, regra_produto, regra_fontes)
+def regra_esqueleto(p: Pauta) -> list[Achado]:
+    """Pauta que ainda tem o texto do modelo não foi escrita."""
+    achados = []
+    lugares = [("ângulo", p.angulo)]
+    lugares += [(f"bloco {i}", b.corrido) for i, b in enumerate(p.blocos, start=1)]
+    lugares += [(f"bloco {i}, visuais", " ".join(b.visuais))
+                for i, b in enumerate(p.blocos, start=1)]
+    for onde, texto in lugares:
+        baixo = texto.lower()
+        for marca in PLACEHOLDERS:
+            if marca in baixo:
+                achados.append(Achado("erro", "esqueleto", onde,
+                                      f"ainda está o texto do modelo (“{marca}”)"))
+                break
+    return achados
+
+
+REGRAS = (regra_esqueleto, regra_angulo, regra_fala, regra_produto, regra_fontes)
 
 
 def conferir(p: Pauta) -> list[Achado]:

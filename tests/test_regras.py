@@ -30,6 +30,10 @@ from niche.pauta import PautaInvalida, carregar  # noqa: E402
 
 RAIZ = Path(__file__).resolve().parent.parent
 PAUTAS = RAIZ / "pautas"
+# Nomeados, não `glob`: a pasta recebe rascunhos novos o tempo todo, e um
+# rascunho recém-criado reprova de propósito. O que tem que continuar passando
+# são os dois episódios que foram ao ar.
+PUBLICADAS = ("01-arte-tokenizada.yml", "02-pilares-cientificos.yml")
 
 BASE = """
 titulo: Teste
@@ -136,9 +140,10 @@ class Regra2Fala(unittest.TestCase):
                             for a in linter.erros(linter.regra_fala(p))))
 
     def test_os_dois_episodios_publicados_passam(self):
-        for arq in sorted(PAUTAS.glob("*.yml")):
-            with self.subTest(pauta=arq.name):
-                self.assertEqual([], linter.erros(linter.regra_fala(carregar(arq))))
+        for nome in PUBLICADAS:
+            with self.subTest(pauta=nome):
+                self.assertEqual(
+                    [], linter.erros(linter.regra_fala(carregar(PAUTAS / nome))))
 
 
 class Regra3Produto(unittest.TestCase):
@@ -212,6 +217,29 @@ class Regra4Fontes(unittest.TestCase):
         self.assertEqual([], linter.erros(linter.regra_fontes(p)))
 
 
+class RegraEsqueleto(unittest.TestCase):
+    def test_pauta_recem_criada_reprova(self):
+        """
+        O esqueleto tem que REPROVAR. Sem isto ele passaria: o texto-lembrete
+        do ângulo tem mais de 40 caracteres e não repete o título, que é tudo
+        o que a regra do ângulo mede sozinha — e um rascunho aprovado ensina a
+        preencher placeholder em vez de mostrar qual é o padrão.
+        """
+        import tempfile as _tf
+        from niche import modelo
+        pasta = Path(_tf.mkdtemp())
+        arq = modelo.criar(pasta, "Episódio de teste")
+        erros = linter.erros(linter.conferir(carregar(arq)))
+        self.assertTrue(erros)
+        self.assertTrue(all(e.regra == "esqueleto" for e in erros), erros)
+
+    def test_titulo_vira_nome_de_arquivo_sem_acento(self):
+        from niche import modelo
+        self.assertEqual("a obra tokenizada".replace(" ", "-"),
+                         modelo.apelidar("A Obra Tokenizada"))
+        self.assertEqual("pilares-cientificos", modelo.apelidar("Pilares Científicos"))
+
+
 class Estrutura(unittest.TestCase):
     def test_contagem_de_visuais_tem_que_bater_com_os_cortes(self):
         with self.assertRaises(PautaInvalida) as c:
@@ -227,9 +255,9 @@ class Estrutura(unittest.TestCase):
                          p.blocos[0].legendas)
 
     def test_os_dois_episodios_publicados_passam_inteiros(self):
-        for arq in sorted(PAUTAS.glob("*.yml")):
-            with self.subTest(pauta=arq.name):
-                p = carregar(arq)
+        for nome in PUBLICADAS:
+            with self.subTest(pauta=nome):
+                p = carregar(PAUTAS / nome)
                 self.assertEqual([], linter.erros(linter.conferir(p)))
 
 
