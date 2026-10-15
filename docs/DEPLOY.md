@@ -31,6 +31,12 @@ NICHE_TOKEN=<gere com: openssl rand -base64 32>
 recusa tudo com 401 — de propósito: ele fica aberto na internet e grava
 arquivo em disco.
 
+**`FAL_KEY`** — a mesma do `.env` local (fal.ai → Keys). É o que faz o botão
+**Entregar pronto** funcionar: a narração é gerada aqui, no serviço, porque é
+aqui que estão o ffmpeg e o disco. Sem ela o botão recusa antes de começar,
+com essa explicação; o **Montar** continua funcionando normalmente. Confira
+em `/saude`, no campo `voz`.
+
 **Volume:** adicione um volume montado em **`/dados`**. É onde ficam pautas,
 acervo e renders. Sem volume, tudo some a cada deploy — o contêiner é
 descartável e o disco dele vai junto.

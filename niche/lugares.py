@@ -32,9 +32,12 @@ RENDERS = _pasta("NICHE_RENDERS", "renders")
 OBRAS = _pasta("NICHE_OBRAS", "acervo/obras")
 ILUSTRA = _pasta("NICHE_ILUSTRA", "acervo/ilustra")
 TRABALHOS = _pasta("NICHE_TRABALHOS", ".niche-jobs")
+# Narração sintetizada. Fica em disco porque é PAGA: remontar o episódio
+# para mexer num visual não pode gerar a voz de novo.
+VOZES = _pasta("NICHE_VOZES", "acervo/vozes")
 
 
 def garantir() -> None:
     """Cria as pastas que o serviço escreve. Idempotente."""
-    for p in (PAUTAS, RENDERS, OBRAS, ILUSTRA, TRABALHOS):
+    for p in (PAUTAS, RENDERS, OBRAS, ILUSTRA, TRABALHOS, VOZES):
         p.mkdir(parents=True, exist_ok=True)

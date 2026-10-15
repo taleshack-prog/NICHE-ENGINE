@@ -35,7 +35,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
-from niche import lugares, modelo, publicacao, relatorio  # noqa: E402
+from niche import lugares, modelo, publicacao, relatorio, voz  # noqa: E402
 from niche.pauta import PautaInvalida, carregar  # noqa: E402
 
 api = FastAPI(title="niche", docs_url=None, redoc_url=None)
@@ -115,6 +115,11 @@ def saude() -> dict[str, Any]:
         "obras": len([p for p in lugares.OBRAS.glob("*") if p.is_file()]),
         "ilustracoes": len([p for p in lugares.ILUSTRA.glob("*") if p.is_file()]),
         "renders": len(list(lugares.RENDERS.glob("*.mp4"))),
+        # Sem isto o botão "Entregar pronto" só falharia na hora de
+        # narrar, depois de o usuário já estar esperando.
+        "voz": voz.disponivel(),
+        "voz_modelo": voz.MODELO,
+        "voz_nome": voz.VOZ_PADRAO,
     }
 
 
@@ -223,20 +228,42 @@ def montar(slug: str, corpo: dict = Body(default={})) -> dict[str, Any]:
 
     lugares.garantir()
     saida = lugares.RENDERS / f"{slug}.mp4"
-    args = [sys.executable, "-u", "-m", "niche", "montar", str(arquivo),
+
+    # `entregar` é o mesmo render com a narração gerada antes e os tempos
+    # vindos da medição dela. É um comando separado porque GASTA: quem clica
+    # em montar não pode ser surpreendido por uma conta.
+    entregar = bool(corpo.get("entregar"))
+    if entregar and not voz.disponivel():
+        raise HTTPException(
+            503,
+            "FAL_KEY não está no ambiente do serviço — sem ela não há como "
+            "gerar a narração. Configure no Railway e faça o deploy de novo.",
+        )
+
+    args = [sys.executable, "-u", "-m", "niche",
+            "entregar" if entregar else "montar", str(arquivo),
             "--saida", str(saida)]
     if d.get("precisa_obras"):
         args += ["--obras", str(lugares.OBRAS)]
     if d.get("precisa_ilustracoes"):
         args += ["--ilustra", str(lugares.ILUSTRA)]
-    for bandeira, chave in (("--voz", "voz"), ("--trilha", "trilha")):
+
+    audio = [("--trilha", "trilha")] if entregar else [("--voz", "voz"),
+                                                       ("--trilha", "trilha")]
+    for bandeira, chave in audio:
         nome = corpo.get(chave)
         if nome:
             alvo = lugares.OBRAS.parent / "audio" / str(nome)
             if not alvo.exists():
                 raise HTTPException(400, f"não achei {chave}: {nome}")
             args += [bandeira, str(alvo)]
-    if corpo.get("tempos"):
+
+    if entregar:
+        if corpo.get("voz_nome"):
+            args += ["--voz-nome", str(corpo["voz_nome"])]
+    elif corpo.get("tempos"):
+        # Com narração gerada os tempos vêm da medição; aceitar os dois seria
+        # deixar um valor digitado sobrescrever a medida exata.
         args += ["--tempos", str(corpo["tempos"])]
     if corpo.get("forcar"):
         args.append("--forcar")

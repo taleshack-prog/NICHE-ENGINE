@@ -96,6 +96,34 @@ class Bloco:
         falado = [c for c in self.cortes if c != SILENCIO]
         return re.sub(r"\s+", " ", " ".join(falado)).strip()
 
+    @property
+    def locucao(self) -> str:
+        """A fala com a PONTUAÇÃO que o `corrido` não tem.
+
+        O texto é escrito para legenda: o corte cai no meio da respiração e
+        por isso não termina em ponto. Lido por gente isso funciona — a
+        pessoa vê a barra e pausa. Lido por um sintetizador vira frase
+        corrida: "Esse quadro está na blockchain Foi dividido em cem pedaços".
+
+        A regra: se o corte seguinte começa com maiúscula, o anterior fecha
+        com ponto; senão, com vírgula. É o que a barra já significava, só
+        escrito de um jeito que o TTS entende. A legenda não muda — ela
+        continua saindo de `legendas`.
+        """
+        partes = [c for c in self.cortes if c != SILENCIO]
+        if not partes:
+            return ""
+        texto = partes[0]
+        for corte in partes[1:]:
+            if texto[-1] in ".,;:!?…":
+                texto += " " + corte
+            elif corte[:1].isupper():
+                texto += ". " + corte
+            else:
+                texto += ", " + corte
+        texto = re.sub(r"\s+", " ", texto).strip()
+        return texto if texto[-1] in ".!?…" else texto + "."
+
 
 @dataclass
 class Pauta:

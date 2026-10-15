@@ -13,6 +13,8 @@ export async function POST(req: Request) {
     trilha?: string;
     tempos?: string;
     forcar?: boolean;
+    entregar?: boolean;
+    voz_nome?: string;
   };
   if (!corpo.slug) {
     return NextResponse.json({ erro: "faltou o slug" }, { status: 400 });

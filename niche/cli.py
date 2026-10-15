@@ -215,6 +215,37 @@ def cmd_montar(args) -> None:
                     args.voz, args.trilha, tempos)
 
 
+# ── entregar ─────────────────────────────────────────────────────────────────
+
+
+def cmd_entregar(args) -> None:
+    """
+    Pauta → mp4, sem parada no meio.
+
+    É o `montar` com a narração gerada antes e os tempos vindos dela. Existe
+    como comando próprio, e não como uma opção do montar, porque gasta
+    dinheiro: quem chama `montar` nunca deve ser surpreendido por uma conta.
+    """
+    from . import montagem, voz as narrador
+
+    p = _abrir(args.pauta)
+    print(f"{p.titulo}\n")
+    _conferir(p, args.forcar)
+
+    slug = args.pauta.stem
+    print("narração:")
+    n = narrador.narrar(p, slug, args.voz_nome)
+    if n.gerados:
+        print(f"  {n.gerados} bloco(s) gerados, {n.caracteres} caracteres, "
+              f"~US$ {n.usd:.3f}")
+    else:
+        print("  tudo reaproveitado do disco — custo zero")
+    print(f"  {n.arquivo.name}: {sum(n.tempos):.1f}s\n")
+
+    montagem.montar(p, args.saida, args.obras, args.ilustra,
+                    n.arquivo, args.trilha, n.tempos)
+
+
 # ── remixar ──────────────────────────────────────────────────────────────────
 
 
@@ -293,6 +324,17 @@ def main(argv: list[str] | None = None) -> None:
                    help="monta mesmo com erro de linter (a regra pode estar "
                         "errada; a saída dela não é lei)")
     m.set_defaults(func=cmd_montar)
+
+    e = sub.add_parser("entregar", help="gera a narração e monta — da pauta ao mp4")
+    e.add_argument("pauta", type=Path)
+    e.add_argument("--saida", type=Path, required=True)
+    e.add_argument("--obras", type=Path, help="pasta com as obras")
+    e.add_argument("--ilustra", type=Path, help="pasta com as ilustrações")
+    e.add_argument("--trilha", type=Path)
+    e.add_argument("--voz-nome", default="", help="voz do TTS (padrão: Brian)")
+    e.add_argument("--forcar", action="store_true",
+                   help="monta mesmo com erro de linter")
+    e.set_defaults(func=cmd_entregar)
 
     r = sub.add_parser("remixar", help="refaz só o áudio de um vídeo montado")
     r.add_argument("pauta", type=Path)

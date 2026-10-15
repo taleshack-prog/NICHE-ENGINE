@@ -15,6 +15,7 @@ import {
   Sparkles,
   Trash2,
   TriangleAlert,
+  Wand2,
   Youtube,
 } from "lucide-react";
 import { PainelDeCusto, type Estimativa } from "../painel-custo";
@@ -159,6 +160,9 @@ export function EditorEpisodio({
   const [trilha, setTrilha] = useLembrado("niche.trilha");
   const [tempos, setTempos] = useState("");
 
+  // Só para a tela saber qual dos dois botões está rodando — o que gasta e
+  // o que não gasta não podem parecer a mesma coisa enquanto esperam.
+  const [entregando, setEntregando] = useState(false);
   const [trabalho, setTrabalho] = useState<string | null>(null);
   const [estadoTrabalho, setEstadoTrabalho] = useState<string>("");
   const [log, setLog] = useState("");
@@ -262,13 +266,14 @@ export function EditorEpisodio({
     else setRecado({ texto: (await r.json()).erro ?? "falha ao apagar", tom: "erro" });
   }
 
-  async function montar(forcar = false) {
+  async function montar(forcar = false, entregar = false) {
     setRecado(null);
     setLog("");
+    setEntregando(entregar);
     const r = await fetch("/api/youtube/montar", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ slug: ep.slug, voz, trilha, tempos, forcar }),
+      body: JSON.stringify({ slug: ep.slug, voz, trilha, tempos, forcar, entregar }),
     });
     const dados = await r.json();
     if (!r.ok) {
@@ -330,17 +335,42 @@ export function EditorEpisodio({
             {sujo ? "Salvar e validar" : "Salvo"}
           </Botao>
           <Botao
-            variante="primario"
+            variante="contorno"
             onClick={() => void montar(false)}
             disabled={montando || sujo || ep.erros > 0}
             title={
               ep.erros > 0
                 ? "o linter recusou: corrija os erros"
-                : sujo ? "salve antes de montar" : undefined
+                : sujo ? "salve antes de montar" : "monta sem narração, custo zero"
             }
           >
-            {montando ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
+            {montando && !entregando ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Play className="size-4" />
+            )}
             Montar
+          </Botao>
+          {/* O caminho inteiro num clique. É o único botão desta tela que
+              gasta, e por isso o custo está escrito nele, não escondido. */}
+          <Botao
+            variante="primario"
+            onClick={() => void montar(false, true)}
+            disabled={montando || sujo || ep.erros > 0}
+            title={
+              ep.erros > 0
+                ? "o linter recusou: corrija os erros"
+                : sujo
+                  ? "salve antes de entregar"
+                  : "gera a narração, mede, monta e mixa — ~US$ 0,07"
+            }
+          >
+            {montando && entregando ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Wand2 className="size-4" />
+            )}
+            Entregar pronto
           </Botao>
           <Botao
             variante="fantasma"
@@ -594,6 +624,18 @@ export function EditorEpisodio({
 
               {aba === "montagem" ? (
                 <div className="space-y-3">
+                  {/* Os dois botões do cabeçalho fazem coisas diferentes, e a
+                      diferença custa dinheiro. Dizer isso aqui evita que
+                      "Narração" e "Tempos" pareçam obrigatórios. */}
+                  <p className="rounded-md border border-borda bg-superficie-2 p-2.5 text-[11px] leading-relaxed text-suave">
+                    <strong className="text-texto">Entregar pronto</strong> gera a
+                    narração, mede cada bloco e monta — os campos abaixo de
+                    narração e tempos ficam por conta dele. Custa ~US$ 0,07 e não
+                    regera o que já existe no disco.{" "}
+                    <strong className="text-texto">Montar</strong> é o caminho de
+                    sempre: usa a narração que você escolher aqui, e não gasta.
+                  </p>
+
                   {audio.length === 0 ? (
                     <p className="rounded-md border border-alerta/30 bg-alerta/5 p-2.5 text-[11px] leading-relaxed text-suave">
                       Nenhuma trilha ou narração no acervo. Suba os arquivos em{" "}

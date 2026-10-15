@@ -11,10 +11,33 @@ npm run dev     # http://localhost:3000/youtube
 
 Lá dá para criar o episódio, escrever a pauta com o linter apontando bloco a
 bloco, ler a fala em formato teleprompter, montar, assistir ao resultado e
-guardar título, descrição e link da publicação. Nada disso chama a API de IA.
+guardar título, descrição e link da publicação.
 
-A **única** ação paga é rascunhar ou corrigir a pauta com IA, e ela mostra a
-conta em tokens antes de gastar. Para ver o valor em dólar, defina no `.env`:
+### Os dois botões de montagem
+
+| Botão | O que faz | Custo |
+| --- | --- | --- |
+| **Montar** | usa a narração que você escolher (ou nenhuma) e os tempos que você digitar | zero |
+| **Entregar pronto** | gera a narração, mede cada bloco, monta e mixa | ~US$ 0,07 |
+
+O **Entregar pronto** é o caminho de uma tecla: pauta salva → mp4. A narração
+sai bloco a bloco, cada arquivo é medido com `ffprobe`, e essas medidas viram
+os `tempos` — a legenda casa com a voz **por construção**, não por ajuste.
+
+Duas coisas que ele faz e não são óbvias:
+
+- **Pontua o texto para o sintetizador.** A fala da pauta é escrita para
+  legenda: o corte cai no meio da respiração e não termina em ponto. Lido por
+  gente funciona; lido por máquina vira frase corrida. O `Bloco.locucao`
+  aplica a regra — corte seguido de maiúscula vira ponto, senão vírgula — e
+  **a legenda não muda**, ela continua saindo de `legendas`.
+- **Não gera duas vezes o mesmo.** O arquivo de cada bloco leva no nome o
+  hash do texto, da voz e do modelo. Remontar porque uma placa ficou torta
+  custa zero; só o bloco cujo texto mudou é regerado.
+
+As ações pagas do dashboard são essa e o rascunho/correção por IA, que mostra
+a conta em tokens antes de gastar. Para ver o valor em dólar, defina no
+`.env`:
 
 ```
 ANTHROPIC_PRECO_ENTRADA_USD=...   # por milhão de tokens
@@ -36,6 +59,14 @@ python3 -m niche montar       pautas/03-novo.yml --saida ep3.mp4 \
     --tempos 9.52,10.11,...
 python3 -m niche remixar      pautas/03-novo.yml ep3.mp4 --saida ep3b.mp4 \
     --voz voz.ogg --trilha trilha.mp3 --volume-trilha 0.6
+```
+
+Com narração sintetizada, as três linhas do meio viram uma — e os tempos
+saem da medição, não da sua mão:
+
+```bash
+python3 -m niche entregar     pautas/03-novo.yml --saida ep3.mp4 \
+    --obras ~/obras --ilustra ~/ilustra --trilha trilha.mp3
 ```
 
 E os que o dashboard usa por baixo:

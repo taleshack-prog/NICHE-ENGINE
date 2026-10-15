@@ -118,6 +118,13 @@ export type OpcoesDeMontagem = {
   trilha?: string;
   tempos?: string;
   forcar?: boolean;
+  /**
+   * Gera a narração antes de montar, e usa a medição dela como tempos.
+   * É a única opção desta tela que gasta dinheiro — por isso tem botão
+   * próprio, e não uma caixinha ao lado de "Montar".
+   */
+  entregar?: boolean;
+  voz_nome?: string;
 };
 
 // ── remoto ───────────────────────────────────────────────────────────────────
@@ -323,15 +330,24 @@ export async function iniciarMontagem(
 
   const id = randomUUID();
   const saida = path.join(PASTA_RENDERS, `${slug}.mp4`);
-  let args = ["-u", "-m", "niche", "montar", caminhoDaPauta(slug), "--saida", saida];
+  const comando = opcoes.entregar ? "entregar" : "montar";
+  let args = ["-u", "-m", "niche", comando, caminhoDaPauta(slug), "--saida", saida];
   args = comAcervo(args, ep);
-  for (const [bandeira, nome] of [["--voz", opcoes.voz], ["--trilha", opcoes.trilha]] as const) {
+  // Em `entregar` a voz vem do TTS; passar --voz junto seria pedir as duas.
+  const audio = opcoes.entregar
+    ? ([["--trilha", opcoes.trilha]] as const)
+    : ([["--voz", opcoes.voz], ["--trilha", opcoes.trilha]] as const);
+  for (const [bandeira, nome] of audio) {
     if (!nome) continue;
     const alvo = path.join(PASTA_ACERVO, "audio", path.basename(nome));
     if (!existsSync(alvo)) throw new Error(`não achei ${bandeira} ${nome}`);
     args.push(bandeira, alvo);
   }
-  if (opcoes.tempos) args.push("--tempos", opcoes.tempos);
+  if (opcoes.entregar) {
+    if (opcoes.voz_nome) args.push("--voz-nome", opcoes.voz_nome);
+  } else if (opcoes.tempos) {
+    args.push("--tempos", opcoes.tempos);
+  }
   if (opcoes.forcar) args.push("--forcar");
 
   const base = path.join(PASTA_TRABALHOS, id);
