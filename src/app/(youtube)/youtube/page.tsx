@@ -4,7 +4,7 @@ import { NovoEpisodio } from "./novo-episodio";
 import { TituloPagina } from "@/components/layout/casca";
 import { Card, CardCabecalho, CardConteudo, CardTitulo } from "@/components/ui/card";
 import { Selo, type SeloTom } from "@/components/ui/selo";
-import { listarEpisodios, type Episodio } from "@/lib/niche";
+import { listarEpisodios, remoto, type Episodio } from "@/lib/niche";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +32,7 @@ function minutos(segundos?: number): string {
 }
 
 export default async function PaginaEpisodios() {
+  const servico = Boolean(remoto());
   let episodios: Episodio[] = [];
   let falha: string | null = null;
   try {
@@ -53,14 +54,25 @@ export default async function PaginaEpisodios() {
           <CardConteudo className="space-y-2 pt-4 text-sm">
             <p className="flex items-center gap-2 font-medium text-erro">
               <Terminal className="size-4" />
-              não consegui falar com o pacote <code>niche</code>
+              {servico ? "o serviço de render recusou" : "não consegui falar com o pacote niche"}
             </p>
-            <p className="text-tenue">
-              O dashboard chama <code className="text-suave">python3 -m niche listar</code> na
-              raiz do repositório. Confira se o Python 3.11+ está no PATH e se
-              <code className="text-suave"> pyyaml</code> e <code className="text-suave">pillow</code> estão
-              instalados.
-            </p>
+            {/* A explicação depende de ONDE o dashboard está rodando. Falar de
+                PATH e pillow para quem está na Vercel manda procurar o erro no
+                lugar errado — o Python de lá não é o problema. */}
+            {servico ? (
+              <p className="text-tenue">
+                {falha.includes("401")
+                  ? "401 quer dizer que o dashboard chegou ao serviço, mas o NICHE_TOKEN das duas pontas não é o mesmo. Compare o valor no Railway e na Vercel — espaço ou quebra de linha ao colar já basta."
+                  : "O dashboard fala com o serviço por NICHE_API_URL. Confira se o endereço está certo e se o serviço está de pé em /saude."}
+              </p>
+            ) : (
+              <p className="text-tenue">
+                O dashboard chama <code className="text-suave">python3 -m niche listar</code> na
+                raiz do repositório. Confira se o Python 3.11+ está no PATH e se
+                <code className="text-suave"> pyyaml</code> e{" "}
+                <code className="text-suave">pillow</code> estão instalados.
+              </p>
+            )}
             <pre className="overflow-x-auto rounded-md bg-fundo p-3 text-xs text-suave">{falha}</pre>
           </CardConteudo>
         </Card>

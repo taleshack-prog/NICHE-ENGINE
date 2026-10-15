@@ -131,7 +131,9 @@ async function chamar<T>(
     ...init,
     cache: "no-store",
     headers: {
-      Authorization: `Bearer ${process.env.NICHE_TOKEN ?? ""}`,
+      // .trim(): colar o token arrasta espaço ou quebra de linha com
+      // frequência, e o resultado é um 401 que parece token errado.
+      Authorization: `Bearer ${(process.env.NICHE_TOKEN ?? "").trim()}`,
       ...(init.body && !(init.body instanceof FormData)
         ? { "Content-Type": "application/json" }
         : {}),
@@ -390,7 +392,7 @@ export async function buscarVideo(slug: string, range: string | null): Promise<R
   return fetch(`${base}/renders/${slug}.mp4`, {
     cache: "no-store",
     headers: {
-      Authorization: `Bearer ${process.env.NICHE_TOKEN ?? ""}`,
+      Authorization: `Bearer ${(process.env.NICHE_TOKEN ?? "").trim()}`,
       ...(range ? { Range: range } : {}),
     },
   });
