@@ -4,6 +4,7 @@ import { IAIndisponivelError } from "@/lib/ai";
 import {
   conferirYaml,
   criarPauta,
+  pautaExistente,
   salvarPauta,
   verEpisodio,
   type Episodio,
@@ -64,7 +65,24 @@ export async function POST(req: Request) {
       // O arquivo nasce pelo `niche novo` — mesmo esqueleto do botão em
       // branco — e só depois recebe o texto da IA. Se a geração falhar, o
       // episódio existe e é editável à mão, em vez de nada ter acontecido.
-      const criado = await criarPauta(c.titulo.trim());
+      // O arquivo é criado ANTES da chamada paga, de propósito: se o título
+      // já existe, o 409 chega aqui sem ter gasto um token sequer.
+      let criado: Episodio;
+      try {
+        criado = await criarPauta(c.titulo.trim());
+      } catch (e) {
+        const existente = pautaExistente(e);
+        if (!existente) throw e;
+        return NextResponse.json(
+          {
+            erro:
+              `já existe um episódio com esse título (${existente}.yml). ` +
+              "Abra o que existe ou mude o título — nada foi gasto.",
+            slug: existente,
+          },
+          { status: 409 },
+        );
+      }
       const { texto, uso } = await gerar(prompt);
 
       let episodio: Episodio;

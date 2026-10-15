@@ -26,10 +26,14 @@ export function NovoEpisodio() {
   const [estimativa, setEstimativa] = useState<Estimativa | null>(null);
   const [ocupado, setOcupado] = useState<"" | "estimando" | "criando">("");
   const [erro, setErro] = useState<string | null>(null);
+  // Quando o título bate com um episódio que já existe, o slug dele vira um
+  // botão: reclamar sem oferecer a saída obriga a procurar na lista.
+  const [jaExiste, setJaExiste] = useState<string | null>(null);
 
   async function emBranco() {
     setOcupado("criando");
     setErro(null);
+    setJaExiste(null);
     try {
       const r = await fetch("/api/youtube/pautas", {
         method: "POST",
@@ -37,7 +41,13 @@ export function NovoEpisodio() {
         body: JSON.stringify({ titulo }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.erro ?? "falha ao criar");
+      if (!r.ok) {
+        if (d.slug) setJaExiste(d.slug as string);
+        throw new Error(d.erro ?? "falha ao criar");
+      }
+      // refresh antes do push: a lista da página é renderizada no servidor e
+      // sem isto o episódio novo só apareceria num recarregamento manual.
+      router.refresh();
       router.push(`/youtube/${d.slug}`);
     } catch (e) {
       setErro((e as Error).message);
@@ -48,6 +58,7 @@ export function NovoEpisodio() {
   async function chamarIa(acao: "estimar-rascunho" | "rascunhar") {
     setOcupado(acao === "rascunhar" ? "criando" : "estimando");
     setErro(null);
+    setJaExiste(null);
     try {
       const r = await fetch("/api/youtube/ia", {
         method: "POST",
@@ -55,12 +66,16 @@ export function NovoEpisodio() {
         body: JSON.stringify({ acao, titulo, tema, fontes, segundos }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.erro ?? "falha na chamada");
+      if (!r.ok) {
+        if (d.slug) setJaExiste(d.slug as string);
+        throw new Error(d.erro ?? "falha na chamada");
+      }
       if (acao === "estimar-rascunho") {
         setEstimativa({ ...d, real: false });
         setOcupado("");
         return;
       }
+      router.refresh();
       router.push(`/youtube/${d.episodio.slug}${d.aviso ? "?aviso=1" : ""}`);
     } catch (e) {
       setErro((e as Error).message);
@@ -171,7 +186,18 @@ export function NovoEpisodio() {
         {/* whitespace-pre-line: o diagnóstico da chave vem em linhas, e sem
             isto vira um parágrafo único difícil de ler. */}
         {erro ? (
-          <p className="whitespace-pre-line text-xs leading-relaxed text-erro">{erro}</p>
+          <div className="space-y-2">
+            <p className="whitespace-pre-line text-xs leading-relaxed text-erro">{erro}</p>
+            {jaExiste ? (
+              <Botao
+                variante="contorno"
+                tamanho="sm"
+                onClick={() => router.push(`/youtube/${jaExiste}`)}
+              >
+                Abrir {jaExiste}
+              </Botao>
+            ) : null}
+          </div>
         ) : null}
 
         <div className="flex items-center gap-2 pt-1">

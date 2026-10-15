@@ -122,6 +122,45 @@ export type OpcoesDeMontagem = {
 
 // ── remoto ───────────────────────────────────────────────────────────────────
 
+/**
+ * Erro do serviço com o código HTTP preservado.
+ *
+ * Sem isto o chamador só recebia uma string e precisava procurar número no
+ * meio da frase para distinguir "já existe" (409, que tem conserto óbvio) de
+ * uma falha de verdade.
+ */
+export class ServicoError extends Error {
+  readonly status: number;
+  constructor(status: number, motivo: string) {
+    super(`serviço respondeu ${status}: ${motivo}`);
+    this.name = "ServicoError";
+    this.status = status;
+  }
+}
+
+/**
+ * O slug que aparece numa mensagem de "já existe".
+ *
+ * O serviço devolve o caminho do arquivo (`/dados/pautas/<slug>.yml`) e o
+ * modo local devolve o do repositório; o que interessa nos dois é o nome,
+ * para a tela poder oferecer "abrir o episódio" em vez de só reclamar.
+ */
+export function slugDaMensagem(mensagem: string): string | null {
+  return /([A-Za-z0-9][A-Za-z0-9-]*)\.ya?ml/.exec(mensagem)?.[1] ?? null;
+}
+
+/**
+ * O slug, quando o erro de criação foi "esse episódio já existe".
+ *
+ * Vale para as duas pontas: o serviço devolve 409, e o `niche novo` local
+ * falha com FileExistsError. Devolve null quando a falha é outra.
+ */
+export function pautaExistente(e: unknown): string | null {
+  const msg = (e as Error)?.message ?? "";
+  const eh409 = e instanceof ServicoError ? e.status === 409 : /já existe|FileExists/i.test(msg);
+  return eh409 ? slugDaMensagem(msg) : null;
+}
+
 async function chamar<T>(
   rota: string,
   init: RequestInit = {},
@@ -150,7 +189,7 @@ async function chamar<T>(
     } catch {
       /* resposta não-JSON: fica o texto cru */
     }
-    throw new Error(`serviço respondeu ${r.status}: ${motivo}`);
+    throw new ServicoError(r.status, motivo);
   }
   return (await r.json()) as T;
 }

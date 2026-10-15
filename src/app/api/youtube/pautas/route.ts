@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { exigirSessao } from "@/lib/auth";
-import { criarPauta, listarEpisodios } from "@/lib/niche";
+import { criarPauta, listarEpisodios, pautaExistente } from "@/lib/niche";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +26,16 @@ export async function POST(req: Request) {
   try {
     return NextResponse.json(await criarPauta(titulo.trim(), slug?.trim()), { status: 201 });
   } catch (e) {
+    const existente = pautaExistente(e);
+    if (existente) {
+      return NextResponse.json(
+        {
+          erro: `já existe um episódio com esse título (${existente}.yml).`,
+          slug: existente,
+        },
+        { status: 409 },
+      );
+    }
     return NextResponse.json({ erro: (e as Error).message }, { status: 400 });
   }
 }
