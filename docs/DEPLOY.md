@@ -62,17 +62,28 @@ três minutos depois, com erro de subprocesso.
 
 **Variáveis de ambiente:**
 
-| Variável | Valor | Para quê |
+> **A coluna do meio diz ONDE BUSCAR o valor — ela não é o valor.** Esta
+> tabela já custou dois deploys quebrados: `DATABASE_URL` e
+> `ANTHROPIC_API_KEY` foram ambas preenchidas na Vercel com a prosa que
+> estava aqui ("a do Railway", "a sua chave"), porque num painel de copiar e
+> colar tudo o que está numa coluna chamada "Valor" parece ser o valor. Nada
+> aqui é colável; o que é colável aparece sozinho, num bloco de código.
+
+| Variável | Onde buscar | Para quê |
 | --- | --- | --- |
-| `DATABASE_URL` | a do Railway | dashboard do Instagram |
-| `AUTH_SECRET` | `openssl rand -base64 32` | assina o cookie de sessão |
-| `AUTH_USERNAME` / `AUTH_PASSWORD` | os seus | login |
-| `NICHE_API_URL` | `https://<serviço>.up.railway.app` | liga o canal ao serviço |
-| `NICHE_TOKEN` | o mesmo do serviço | autentica a chamada |
-| `ANTHROPIC_API_KEY` | a sua chave | só os botões de IA |
-| `ANTHROPIC_MODEL_ROTEIRO` | **deixe de fora** | o padrão do código é `claude-sonnet-5`, ativo. Só defina para trocar de modelo — e confira o id em `/api/youtube/diagnostico`, que lista os modelos da sua conta. **Não** copie o `claude-sonnet-4-5` do `.env` local: ele é aposentado em 30/11/2026 |
-| `APP_PUBLIC_URL` | a URL da Vercel | o Meta baixa a capa dessa URL |
-| `ANTHROPIC_PRECO_*_USD` | opcional | mostra o custo em dólar na tela |
+| `DATABASE_URL` | Railway → Postgres → Variables → `DATABASE_PUBLIC_URL` (a interna não resolve de fora) | dashboard do Instagram |
+| `AUTH_SECRET` | gere: `openssl rand -base64 32` | assina o cookie de sessão |
+| `AUTH_USERNAME` / `AUTH_PASSWORD` | você escolhe, na hora | login |
+| `NICHE_API_URL` | Railway → serviço → Settings → Domains (começa com `https://`) | liga o canal ao serviço |
+| `NICHE_TOKEN` | o mesmo texto que está no Railway → serviço → Variables | autentica a chamada |
+| `ANTHROPIC_API_KEY` | platform.claude.com → API keys (começa com `sk-ant-`) | só os botões de IA |
+| `ANTHROPIC_MODEL_ROTEIRO` | não crie | o padrão do código é `claude-sonnet-5`, ativo. Só defina para trocar de modelo — e confira o id em `/api/youtube/diagnostico`, que lista os modelos da sua conta. **Não** copie o `claude-sonnet-4-5` do `.env` local: ele é aposentado em 30/11/2026 |
+| `APP_PUBLIC_URL` | Vercel → Project → Domains | o Meta baixa a capa dessa URL |
+| `ANTHROPIC_PRECO_*_USD` | não crie, a menos que queira o custo em dólar na tela | preço por milhão de tokens |
+
+**Conferência:** nenhum desses valores tem espaço no meio, e só três começam
+com texto previsível — `postgresql://`, `https://` e `sk-ant-`. Se o que você
+colou não bate com isso, não é o valor.
 
 > **NÃO copie `AUTH_DISABLED` do `.env` local.** Ele vale `"true"` aí, que é o
 > certo para desenvolver. Em produção a variável é ignorada pelo código (ver
