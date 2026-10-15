@@ -147,8 +147,11 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           erro:
-            "ANTHROPIC_API_KEY não está no .env. Edite o arquivo pelo editor e " +
-            "reinicie o servidor — o Next lê o .env só na inicialização.",
+            "Nenhuma credencial de IA no ambiente. O caminho curto é a " +
+            "FAL_KEY, que o canal já usa para a narração — defina uma só e " +
+            "as duas coisas funcionam. (A ANTHROPIC_API_KEY segue valendo " +
+            "como alternativa.) Na Vercel, variável nova só entra no " +
+            "próximo deploy.",
         },
         { status: 503 },
       );

@@ -51,7 +51,10 @@ export function PainelDeCusto({ estimativa }: { estimativa: Estimativa }) {
           </>
         ) : null}
       </p>
-      {!precoConfigurado ? (
+      {/* Pelo caminho da fal o dólar vem na resposta, calculado por quem
+          cobra — não há tabela de preço para configurar. O aviso abaixo só
+          faz sentido quando o custo não veio e nem pode vir. */}
+      {!precoConfigurado && uso.usd === null ? (
         <p className="mt-1.5 leading-relaxed text-tenue">
           Para ver em dólar, defina <code className="text-suave">ANTHROPIC_PRECO_ENTRADA_USD</code>{" "}
           e <code className="text-suave">ANTHROPIC_PRECO_SAIDA_USD</code> no{" "}

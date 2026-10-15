@@ -439,3 +439,73 @@ export function promptVisualDeRoteiro(tema: string, corpo: string): string {
     "Moody directional lighting, shallow depth of field, rich color, photographic realism, no illustration.",
   ].join(" ");
 }
+
+// ── texto ────────────────────────────────────────────────────────────────────
+
+/**
+ * O modelo de TEXTO pela fal, para escrever e corrigir pauta do canal.
+ *
+ * POR QUE EXISTE: o dashboard pedia DUAS credenciais — a da Anthropic para
+ * escrever a pauta e esta para a mídia. Qualquer uma inválida derrubava o
+ * fluxo inteiro, e foi o que aconteceu: a da Anthropic entrou errada e o
+ * rascunho ficou impossível. A fal serve os mesmos modelos num passthrough
+ * compatível com a API da OpenAI, então uma credencial cobre as duas pontas.
+ *
+ * E a resposta traz `usage.cost` em dólar, calculado por quem cobra — o custo
+ * na tela deixa de depender de tabela de preço no .env, que envelhece sozinha
+ * e mente com cara de número oficial.
+ */
+const ROTA_TEXTO = "openrouter/router/openai/v1/chat/completions";
+
+/** Conferido em 15/10/2026 contra a conta: responde e cobra por token. */
+export const MODELO_FAL = process.env.NICHE_IA_MODELO_FAL || "anthropic/claude-sonnet-4.5";
+
+/** A credencial, tolerando o erro de digitação mais comum e espaço nas pontas. */
+export function chaveFal(): string {
+  for (const nome of ["FAL_KEY", "FAL_API_KEY"]) {
+    const v = (process.env[nome] ?? "").trim();
+    if (v) return v;
+  }
+  return "";
+}
+
+export type UsoFal = { entrada: number; saida: number; usd: number | null };
+
+export async function conversar(
+  prompt: string,
+  maxTokens: number,
+): Promise<{ texto: string; uso: UsoFal }> {
+  if (!chaveFal()) throw new FalIndisponivelError();
+
+  const res = await fetch(`https://fal.run/${ROTA_TEXTO}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Key ${chaveFal()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: MODELO_FAL,
+      max_tokens: maxTokens,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+
+  const bruto = await res.text();
+  if (!res.ok) throw new FalError(`texto HTTP ${res.status} — ${bruto.slice(0, 300)}`);
+
+  const d = JSON.parse(bruto) as {
+    choices?: { message?: { content?: string } }[];
+    usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
+  };
+  const texto = d.choices?.[0]?.message?.content ?? "";
+  if (!texto.trim()) throw new FalError(`resposta sem texto — ${bruto.slice(0, 300)}`);
+
+  return {
+    texto,
+    uso: {
+      entrada: d.usage?.prompt_tokens ?? 0,
+      saida: d.usage?.completion_tokens ?? 0,
+      usd: typeof d.usage?.cost === "number" ? d.usage.cost : null,
+    },
+  };
+}

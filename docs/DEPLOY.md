@@ -82,7 +82,8 @@ três minutos depois, com erro de subprocesso.
 | `AUTH_USERNAME` / `AUTH_PASSWORD` | você escolhe, na hora | login |
 | `NICHE_API_URL` | Railway → serviço → Settings → Domains (começa com `https://`) | liga o canal ao serviço |
 | `NICHE_TOKEN` | o mesmo texto que está no Railway → serviço → Variables | autentica a chamada |
-| `ANTHROPIC_API_KEY` | platform.claude.com → API keys (começa com `sk-ant-`) | só os botões de IA |
+| `FAL_KEY` | fal.ai → Keys (a mesma do serviço) | escreve e corrige a pauta |
+| `ANTHROPIC_API_KEY` | não crie | alternativa à `FAL_KEY` para os botões de IA; com as duas presentes, vale a da Anthropic |
 | `ANTHROPIC_MODEL_ROTEIRO` | não crie | o padrão do código é `claude-sonnet-5`, ativo. Só defina para trocar de modelo — e confira o id em `/api/youtube/diagnostico`, que lista os modelos da sua conta. **Não** copie o `claude-sonnet-4-5` do `.env` local: ele é aposentado em 30/11/2026 |
 | `APP_PUBLIC_URL` | Vercel → Project → Domains | o Meta baixa a capa dessa URL |
 | `ANTHROPIC_PRECO_*_USD` | não crie, a menos que queira o custo em dólar na tela | preço por milhão de tokens |
@@ -97,13 +98,29 @@ colou não bate com isso, não é o valor.
 > abrir o `.env`, copiar tudo e colar — e o resultado seria o dashboard
 > inteiro aberto na internet, com o botão de publicar.
 
-### Quando a IA responder 401
+### Uma credencial, não duas
 
-`invalid x-api-key` é a mesma mensagem para chave ausente, chave com quebra de
-linha colada junto, chave de outra organização e chave revogada. Abra
-**`/api/youtube/diagnostico`** logado: ele chama `/v1/models` (não gasta token),
-diz qual dos quatro casos é, e lista os modelos que a conta enxerga. Ele nunca
-imprime a chave — só o tamanho, o prefixo `sk-ant-api03` e os últimos 4.
+O canal precisa da `FAL_KEY` de qualquer jeito — é ela que gera a narração.
+Por isso ela também escreve a pauta, pelo passthrough da fal
+(`openrouter/router/openai/v1/chat/completions`, modelo
+`anthropic/claude-sonnet-4.5`), e a `ANTHROPIC_API_KEY` deixa de ser
+necessária. Duas credenciais obrigatórias significam duas maneiras de o fluxo
+inteiro parar, e foi o que aconteceu em 15/10/2026: a da Anthropic entrou com
+o texto da coluna desta tabela e o rascunho ficou impossível por horas.
+
+O custo em dólar passa a vir na resposta da fal, calculado por quem cobra —
+sem `ANTHROPIC_PRECO_*` no `.env`.
+
+Quem decide: `NICHE_IA_PROVEDOR` (`fal` ou `anthropic`), se definida. Sem ela,
+é a fal, a menos que exista uma `ANTHROPIC_API_KEY` com cara de chave de
+verdade (começando com `sk-ant-`).
+
+### Quando a IA recusar
+
+Abra **`/api/youtube/diagnostico`** logado. Ele diz qual credencial está em
+uso e se ela vale; pelo caminho da Anthropic chama `/v1/models` (não gasta
+token) e separa chave ausente, chave suja, chave de outra organização e
+modelo inexistente. Nunca imprime segredo — só tamanho e últimos 4.
 
 Lembre que **variável nova na Vercel só vale no próximo deploy**. Editar e não
 redeployar deixa a função rodando com o valor antigo.

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { IAIndisponivelError, MODELO_PADRAO } from "@/lib/ai";
+import { chaveFal, conversar, MODELO_FAL } from "@/lib/fal";
 import { PASTA_PAUTAS } from "@/lib/niche";
 
 /**
@@ -58,13 +59,21 @@ export function estimar(prompt: string, saidaEsperada = 2600): Uso {
   return {
     entrada,
     saida: saidaEsperada,
-    modelo: modelo(),
+    modelo: modeloEmUso(),
     usd: emDolar(entrada, saidaEsperada),
   };
 }
 
 function modelo(): string {
   return process.env.ANTHROPIC_MODEL_ROTEIRO || MODELO_PADRAO.roteiro;
+}
+
+/** O modelo às vezes devolve dentro de cerca, apesar do pedido. */
+function limpar(texto: string): string {
+  return texto
+    .trim()
+    .replace(/^```(?:ya?ml)?\s*/i, "")
+    .replace(/\s*```$/, "");
 }
 
 /** O mesmo modelo, para quem precisa dizer na tela qual foi usado. */
@@ -175,11 +184,53 @@ export function promptDeCorrecao(yaml: string, achados: string[]): string {
 
 let clienteCache: Anthropic | null = null;
 
+/**
+ * Qual credencial escreve a pauta.
+ *
+ * POR QUE NÃO É SÓ "a da Anthropic": exigir duas credenciais para fazer um
+ * episódio significa que qualquer uma das duas derruba o fluxo inteiro, e foi
+ * o que aconteceu — a chave da Anthropic entrou errada e o rascunho ficou
+ * impossível por horas. A fal serve os mesmos modelos e já é obrigatória
+ * para a narração, então ela é o caminho padrão quando está configurada.
+ *
+ * A chave da Anthropic só é considerada quando TEM CARA de chave: um valor
+ * que não começa com `sk-ant-` não é credencial, é texto que alguém colou no
+ * campo errado, e tentar com ele só produz um 401 confuso.
+ */
+export function provedor(): "fal" | "anthropic" {
+  const escolhido = (process.env.NICHE_IA_PROVEDOR ?? "").trim().toLowerCase();
+  if (escolhido === "fal" || escolhido === "anthropic") return escolhido;
+
+  const anthropic = (process.env.ANTHROPIC_API_KEY ?? "").trim();
+  if (chaveFal() && !anthropic.startsWith("sk-ant-")) return "fal";
+  return anthropic ? "anthropic" : "fal";
+}
+
+/** O modelo que vai ser usado de fato, para aparecer na estimativa. */
+export function modeloEmUso(): string {
+  return provedor() === "fal" ? MODELO_FAL : modelo();
+}
+
 /** Chama o modelo e devolve o texto mais o uso REAL, para a conta na tela. */
 export async function gerar(prompt: string, maxTokens = 6000): Promise<{
   texto: string;
   uso: Uso;
 }> {
+  if (provedor() === "fal") {
+    if (!chaveFal()) throw new IAIndisponivelError();
+    const { texto, uso } = await conversar(prompt, maxTokens);
+    return {
+      texto: limpar(texto),
+      uso: {
+        entrada: uso.entrada,
+        saida: uso.saida,
+        modelo: MODELO_FAL,
+        // Vem de quem cobrou, não de tabela no .env.
+        usd: uso.usd ?? emDolar(uso.entrada, uso.saida),
+      },
+    };
+  }
+
   // .trim() pelo mesmo motivo de src/lib/ai.ts: espaço invisível na ponta da
   // chave vira 401 com cara de chave inválida.
   const apiKey = (process.env.ANTHROPIC_API_KEY ?? "").trim();
@@ -192,14 +243,12 @@ export async function gerar(prompt: string, maxTokens = 6000): Promise<{
     messages: [{ role: "user", content: prompt }],
   });
 
-  const texto = r.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("")
-    .trim()
-    // O modelo às vezes devolve dentro de cerca, apesar do pedido.
-    .replace(/^```(?:ya?ml)?\s*/i, "")
-    .replace(/\s*```$/, "");
+  const texto = limpar(
+    r.content
+      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join(""),
+  );
 
   return {
     texto,
