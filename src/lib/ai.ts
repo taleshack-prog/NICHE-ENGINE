@@ -101,7 +101,10 @@ function modeloPara(tarefa: TarefaIA): string {
 
 let clienteCache: Anthropic | null = null;
 function cliente(): Anthropic {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  // .trim(): colar a chave no painel arrasta espaço ou quebra de linha com
+  // frequência, e o resultado é um 401 "invalid x-api-key" idêntico ao de
+  // chave errada. Mesmo defeito que já tinha mordido o NICHE_TOKEN.
+  const apiKey = (process.env.ANTHROPIC_API_KEY ?? "").trim();
   if (!apiKey) throw new IAIndisponivelError();
   clienteCache ??= new Anthropic({ apiKey, maxRetries: 2 });
   return clienteCache;

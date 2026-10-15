@@ -168,7 +168,11 @@ export function NovoEpisodio() {
           </>
         ) : null}
 
-        {erro ? <p className="text-xs text-erro">{erro}</p> : null}
+        {/* whitespace-pre-line: o diagnóstico da chave vem em linhas, e sem
+            isto vira um parágrafo único difícil de ler. */}
+        {erro ? (
+          <p className="whitespace-pre-line text-xs leading-relaxed text-erro">{erro}</p>
+        ) : null}
 
         <div className="flex items-center gap-2 pt-1">
           {comIa ? (

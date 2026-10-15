@@ -70,7 +70,7 @@ três minutos depois, com erro de subprocesso.
 | `NICHE_API_URL` | `https://<serviço>.up.railway.app` | liga o canal ao serviço |
 | `NICHE_TOKEN` | o mesmo do serviço | autentica a chamada |
 | `ANTHROPIC_API_KEY` | a sua chave | só os botões de IA |
-| `ANTHROPIC_MODEL_ROTEIRO` | `claude-sonnet-5-5` | **não** copie o `claude-sonnet-4-5` do `.env` local: ele é aposentado em 30/11/2026 |
+| `ANTHROPIC_MODEL_ROTEIRO` | **deixe de fora** | o padrão do código é `claude-sonnet-5`, ativo. Só defina para trocar de modelo — e confira o id em `/api/youtube/diagnostico`, que lista os modelos da sua conta. **Não** copie o `claude-sonnet-4-5` do `.env` local: ele é aposentado em 30/11/2026 |
 | `APP_PUBLIC_URL` | a URL da Vercel | o Meta baixa a capa dessa URL |
 | `ANTHROPIC_PRECO_*_USD` | opcional | mostra o custo em dólar na tela |
 
@@ -79,6 +79,17 @@ três minutos depois, com erro de subprocesso.
 > `src/lib/auth.ts` e `src/proxy.ts`) justamente porque o caminho natural é
 > abrir o `.env`, copiar tudo e colar — e o resultado seria o dashboard
 > inteiro aberto na internet, com o botão de publicar.
+
+### Quando a IA responder 401
+
+`invalid x-api-key` é a mesma mensagem para chave ausente, chave com quebra de
+linha colada junto, chave de outra organização e chave revogada. Abra
+**`/api/youtube/diagnostico`** logado: ele chama `/v1/models` (não gasta token),
+diz qual dos quatro casos é, e lista os modelos que a conta enxerga. Ele nunca
+imprime a chave — só o tamanho, o prefixo `sk-ant-api03` e os últimos 4.
+
+Lembre que **variável nova na Vercel só vale no próximo deploy**. Editar e não
+redeployar deixa a função rodando com o valor antigo.
 
 ## 4. Primeira carga
 

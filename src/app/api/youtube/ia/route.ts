@@ -11,10 +11,12 @@ import {
 import {
   estimar,
   gerar,
+  modeloDoRoteiro,
   precoConfigurado,
   promptDeCorrecao,
   promptDeRascunho,
 } from "@/lib/pauta-ia";
+import { diagnosticarChave, emTexto } from "@/lib/diagnostico-ia";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -133,6 +135,19 @@ export async function POST(req: Request) {
         { status: 503 },
       );
     }
-    return NextResponse.json({ erro: (e as Error).message }, { status: 500 });
+    // 401/404 da Anthropic chegam aqui como texto cru de JSON ("invalid
+    // x-api-key"), que não diz O QUE corrigir. Aqui a própria rota investiga:
+    // /v1/models é de graça e responde as duas perguntas possíveis — a chave
+    // vale? o modelo existe nesta conta?
+    const msg = (e as Error).message;
+    if (/\b401\b|authentication_error|invalid x-api-key/i.test(msg)) {
+      const d = await diagnosticarChave(modeloDoRoteiro());
+      return NextResponse.json({ erro: emTexto(d), diagnostico: d }, { status: 401 });
+    }
+    if (/\b404\b|not_found_error/i.test(msg)) {
+      const d = await diagnosticarChave(modeloDoRoteiro());
+      return NextResponse.json({ erro: emTexto(d), diagnostico: d }, { status: 404 });
+    }
+    return NextResponse.json({ erro: msg }, { status: 500 });
   }
 }

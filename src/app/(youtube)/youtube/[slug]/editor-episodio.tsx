@@ -366,7 +366,7 @@ export function EditorEpisodio({
             TARJA[recado.tom]
           }`}
         >
-          <span className="flex items-start gap-2">
+          <span className="flex items-start gap-2 whitespace-pre-line">
             {recado.tom === "erro" ? (
               <AlertTriangle className="mt-0.5 size-4 shrink-0 text-erro" />
             ) : recado.tom === "aviso" ? (

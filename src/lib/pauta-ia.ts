@@ -67,6 +67,11 @@ function modelo(): string {
   return process.env.ANTHROPIC_MODEL_ROTEIRO || MODELO_PADRAO.roteiro;
 }
 
+/** O mesmo modelo, para quem precisa dizer na tela qual foi usado. */
+export function modeloDoRoteiro(): string {
+  return modelo();
+}
+
 const REGRAS = `
 REGRAS QUE O LINTER APLICA — uma pauta que as viole é RECUSADA antes de montar:
 
@@ -175,7 +180,9 @@ export async function gerar(prompt: string, maxTokens = 6000): Promise<{
   texto: string;
   uso: Uso;
 }> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  // .trim() pelo mesmo motivo de src/lib/ai.ts: espaço invisível na ponta da
+  // chave vira 401 com cara de chave inválida.
+  const apiKey = (process.env.ANTHROPIC_API_KEY ?? "").trim();
   if (!apiKey) throw new IAIndisponivelError();
   clienteCache ??= new Anthropic({ apiKey, maxRetries: 2 });
 
