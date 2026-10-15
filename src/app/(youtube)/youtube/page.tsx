@@ -100,7 +100,11 @@ export default async function PaginaEpisodios() {
 
             <CardConteudo className="flex flex-1 flex-col gap-3">
               {ep.defeito ? (
-                <pre className="overflow-x-auto rounded-md bg-fundo p-2 text-[11px] text-erro">
+                /* whitespace-pre-wrap e break-all: num card estreito o
+                   caminho do arquivo é longo o bastante para empurrar a
+                   mensagem inteira para fora da borda — e aí o único texto
+                   que explica a quebra é o que não se lê. */
+                <pre className="whitespace-pre-wrap break-all rounded-md bg-fundo p-2 text-[11px] leading-relaxed text-erro">
                   {ep.defeito}
                 </pre>
               ) : (

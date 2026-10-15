@@ -51,6 +51,21 @@ def _relativo(arquivo: Path) -> str:
         return str(a)
 
 
+def _sem_caminho(e: Exception, arquivo: Path) -> str:
+    """O defeito sem o caminho do arquivo na frente.
+
+    POR QUE: o cartão do episódio já diz de que arquivo se trata, e no
+    serviço o caminho é `/dados/pautas/<slug-comprido>.yml` — num cartão
+    estreito ele ocupa a linha inteira e o motivo da quebra, que é a única
+    coisa útil ali, fica fora da borda.
+    """
+    texto = str(e)
+    for prefixo in (f"{arquivo}: ", f"{arquivo.name}: "):
+        if texto.startswith(prefixo):
+            return texto[len(prefixo):]
+    return texto
+
+
 def resumo(arquivo: Path) -> dict[str, Any]:
     """O cartão de um episódio na lista. Nunca estoura: pauta quebrada vira
     um cartão com o defeito escrito, em vez de derrubar a tela inteira."""
@@ -62,7 +77,7 @@ def resumo(arquivo: Path) -> dict[str, Any]:
             "arquivo": _relativo(arquivo),
             "titulo": arquivo.stem,
             "estado": "quebrada",
-            "defeito": str(e),
+            "defeito": _sem_caminho(e, arquivo),
             "achados": [], "erros": 1, "avisos": 0,
         }
 
