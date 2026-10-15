@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Film,
+  Info,
   Loader2,
   Mic,
   Play,
@@ -34,6 +35,29 @@ const LIMITE_TITULO = 100;
 const LIMITE_DESCRICAO = 5000;
 
 type Aba = "fala" | "linha" | "fontes" | "montagem" | "publicação";
+
+/**
+ * Uma barra só, três tons.
+ *
+ * POR QUE EXISTE: antes era um `string` chamado `erroSalvar`, e tudo caía
+ * nele — inclusive "o linter não apontou nada", que é boa notícia. Pintada de
+ * vermelho, com um "montar assim mesmo" ao lado que não tinha nada a ver com
+ * a mensagem, ela mandava procurar problema onde não havia.
+ *
+ * `forcar` só vem de quem pode forçar: a própria montagem. Nenhuma outra
+ * ação oferece esse botão.
+ */
+type Recado = {
+  texto: string;
+  tom: "erro" | "aviso" | "info";
+  forcar?: boolean;
+};
+
+const TARJA: Record<Recado["tom"], string> = {
+  erro: "border-erro/40 bg-erro/10 text-texto",
+  aviso: "border-alerta/40 bg-alerta/10 text-texto",
+  info: "border-borda bg-superficie-2 text-suave",
+};
 
 /**
  * Pastas de obras e ilustrações mudam pouco; digitar toda vez é imposto.
@@ -114,7 +138,7 @@ export function EditorEpisodio({
   const [ep, setEp] = useState(inicial);
   const [yaml, setYaml] = useState(inicial.yaml ?? "");
   const [salvando, setSalvando] = useState(false);
-  const [erroSalvar, setErroSalvar] = useState<string | null>(null);
+  const [recado, setRecado] = useState<Recado | null>(null);
   const [aba, setAba] = useState<Aba>("fala");
 
   const [estimativaIa, setEstimativaIa] = useState<Estimativa | null>(null);
@@ -145,7 +169,7 @@ export function EditorEpisodio({
 
   async function salvar() {
     setSalvando(true);
-    setErroSalvar(null);
+    setRecado(null);
     try {
       const r = await fetch(`/api/youtube/pautas/${ep.slug}`, {
         method: "PUT",
@@ -157,7 +181,7 @@ export function EditorEpisodio({
       setEp(dados as Episodio);
       setYaml((dados as Episodio).yaml ?? yaml);
     } catch (e) {
-      setErroSalvar((e as Error).message);
+      setRecado({ texto: (e as Error).message, tom: "erro" });
     } finally {
       setSalvando(false);
     }
@@ -172,7 +196,7 @@ export function EditorEpisodio({
    */
   async function corrigir(acao: "estimar-correcao" | "corrigir") {
     setOcupadoIa(acao === "corrigir" ? "corrigindo" : "estimando");
-    setErroSalvar(null);
+    setRecado(null);
     try {
       const r = await fetch("/api/youtube/ia", {
         method: "POST",
@@ -180,17 +204,25 @@ export function EditorEpisodio({
         body: JSON.stringify({ acao, slug: ep.slug, yaml }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.erro ?? "falha na chamada");
+      if (!r.ok) {
+        // "não há o que corrigir" chega aqui como 409 e vem marcado. É a
+        // recusa de gastar token numa pauta limpa, não uma falha.
+        setRecado({
+          texto: d.erro ?? "falha na chamada",
+          tom: d.informativo ? "info" : "erro",
+        });
+        return;
+      }
       if (acao === "estimar-correcao") {
         setEstimativaIa({ ...d, real: false });
       } else {
         setProposta(d.proposta);
         setDepois(d.depois ?? null);
         setEstimativaIa({ uso: d.uso, precoConfigurado: true, real: true });
-        if (d.aviso) setErroSalvar(d.aviso);
+        if (d.aviso) setRecado({ texto: d.aviso, tom: "aviso" });
       }
     } catch (e) {
-      setErroSalvar((e as Error).message);
+      setRecado({ texto: (e as Error).message, tom: "erro" });
     } finally {
       setOcupadoIa("");
     }
@@ -198,7 +230,7 @@ export function EditorEpisodio({
 
   async function salvarPublicacao() {
     setSalvandoPub(true);
-    setErroSalvar(null);
+    setRecado(null);
     try {
       const r = await fetch("/api/youtube/publicar", {
         method: "POST",
@@ -217,7 +249,7 @@ export function EditorEpisodio({
       setEp(d as Episodio);
       setYaml((d as Episodio).yaml ?? yaml);
     } catch (e) {
-      setErroSalvar((e as Error).message);
+      setRecado({ texto: (e as Error).message, tom: "erro" });
     } finally {
       setSalvandoPub(false);
     }
@@ -227,11 +259,11 @@ export function EditorEpisodio({
     if (!window.confirm(`Apagar a pauta "${ep.titulo}"? O mp4 montado fica.`)) return;
     const r = await fetch(`/api/youtube/pautas/${ep.slug}`, { method: "DELETE" });
     if (r.ok) router.push("/youtube");
-    else setErroSalvar((await r.json()).erro ?? "falha ao apagar");
+    else setRecado({ texto: (await r.json()).erro ?? "falha ao apagar", tom: "erro" });
   }
 
   async function montar(forcar = false) {
-    setErroSalvar(null);
+    setRecado(null);
     setLog("");
     const r = await fetch("/api/youtube/montar", {
       method: "POST",
@@ -240,7 +272,13 @@ export function EditorEpisodio({
     });
     const dados = await r.json();
     if (!r.ok) {
-      setErroSalvar(dados.erro ?? "falha ao iniciar");
+      // Aqui, e só aqui, o "montar assim mesmo" faz sentido: quem recusou
+      // foi a montagem, e forçar é a saída.
+      setRecado({
+        texto: dados.erro ?? "falha ao iniciar",
+        tom: "erro",
+        forcar: !forcar && ep.erros > 0,
+      });
       return;
     }
     setTrabalho(dados.id);
@@ -322,20 +360,35 @@ export function EditorEpisodio({
         <code className="text-suave">{ep.arquivo}</code>
       </div>
 
-      {erroSalvar ? (
-        <p className="rounded-md border border-erro/40 bg-erro/10 p-3 text-sm text-texto">
-          {erroSalvar}
-          {ep.erros > 0 ? (
-            <Botao
-              variante="destrutivo"
-              tamanho="sm"
-              className="ml-3"
-              onClick={() => void montar(true)}
-            >
+      {recado ? (
+        <div
+          className={`flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border p-3 text-sm ${
+            TARJA[recado.tom]
+          }`}
+        >
+          <span className="flex items-start gap-2">
+            {recado.tom === "erro" ? (
+              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-erro" />
+            ) : recado.tom === "aviso" ? (
+              <TriangleAlert className="mt-0.5 size-4 shrink-0 text-alerta" />
+            ) : (
+              <Info className="mt-0.5 size-4 shrink-0 text-tenue" />
+            )}
+            {recado.texto}
+          </span>
+          {recado.forcar ? (
+            <Botao variante="destrutivo" tamanho="sm" onClick={() => void montar(true)}>
               montar assim mesmo
             </Botao>
           ) : null}
-        </p>
+          <button
+            type="button"
+            onClick={() => setRecado(null)}
+            className="ml-auto text-xs text-tenue underline-offset-2 hover:underline"
+          >
+            fechar
+          </button>
+        </div>
       ) : null}
 
       <div className="grid gap-5 xl:grid-cols-[1fr_minmax(380px,420px)]">

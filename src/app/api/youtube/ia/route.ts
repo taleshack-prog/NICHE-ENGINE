@@ -86,8 +86,15 @@ export async function POST(req: Request) {
       const atual = await conferirYaml(c.yaml);
       const achados = atual.achados.map((a) => `[${a.regra}] ${a.onde}: ${a.texto}`);
       if (achados.length === 0) {
+        // 409 porque a ação não pode seguir, mas isto NÃO é falha: a pauta
+        // está limpa. `informativo` existe para o editor não pintar a tarja
+        // vermelha de erro numa boa notícia — o botão apenas se recusou a
+        // gastar token para corrigir o que já passou nas regras.
         return NextResponse.json(
-          { erro: "o linter não apontou nada — não há o que corrigir" },
+          {
+            erro: "o linter não apontou nada — não há o que corrigir",
+            informativo: true,
+          },
           { status: 409 },
         );
       }
