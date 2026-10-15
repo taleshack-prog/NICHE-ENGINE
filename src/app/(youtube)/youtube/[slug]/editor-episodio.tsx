@@ -11,6 +11,7 @@ import {
   Loader2,
   Mic,
   Play,
+  RotateCcw,
   Save,
   Sparkles,
   Trash2,
@@ -169,7 +170,28 @@ export function EditorEpisodio({
   const fimDoLog = useRef<HTMLPreElement>(null);
 
   const sujo = yaml !== (ep.yaml ?? "");
+  const vazio = !yaml.trim();
   const montando = estadoTrabalho === "rodando";
+
+  /** Carrega a versão de antes do último salvamento. Não grava nada. */
+  async function recuperar() {
+    const r = await fetch(`/api/youtube/pautas/${ep.slug}?anterior=1`);
+    const d = await r.json();
+    if (!r.ok || !d.yaml) {
+      setRecado({
+        texto: "não há versão anterior guardada para este episódio.",
+        tom: "info",
+      });
+      return;
+    }
+    setYaml(d.yaml as string);
+    setRecado({
+      texto:
+        "carreguei a versão anterior no editor. Confira e clique em " +
+        "Salvar e validar — até lá nada foi gravado.",
+      tom: "info",
+    });
+  }
 
   async function salvar() {
     setSalvando(true);
@@ -330,10 +352,23 @@ export function EditorEpisodio({
           <p className="mt-1 max-w-3xl text-sm leading-relaxed text-tenue">{ep.angulo}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Botao variante="contorno" onClick={() => void salvar()} disabled={!sujo || salvando}>
+          <Botao
+            variante="contorno"
+            onClick={() => void salvar()}
+            disabled={!sujo || salvando || vazio}
+            title={vazio ? "pauta em branco: não há o que salvar" : undefined}
+          >
             {salvando ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
             {sujo ? "Salvar e validar" : "Salvo"}
           </Botao>
+          {/* Só aparece quando serve: pauta que não carrega ou editor vazio.
+              Carrega a cópia no editor sem gravar — quem grava é você. */}
+          {ep.estado === "quebrada" || vazio ? (
+            <Botao variante="fantasma" tamanho="sm" onClick={() => void recuperar()}>
+              <RotateCcw className="size-3.5" />
+              Versão anterior
+            </Botao>
+          ) : null}
           <Botao
             variante="contorno"
             onClick={() => void montar(false)}
@@ -447,9 +482,26 @@ export function EditorEpisodio({
               </div>
             </CardCabecalho>
             <CardConteudo className="space-y-3">
-              <ListaDeAchados achados={ep.achados} />
+              {/* Pauta quebrada não tem achados — o linter nem chega a rodar,
+                  porque o arquivo não carrega. Mostrar a lista vazia aqui
+                  dizia "passou nas quatro regras" ao lado de um selo "1 erro":
+                  as duas coisas na mesma linha, uma delas falsa. */}
+              {ep.estado === "quebrada" ? (
+                <div className="space-y-2 rounded-md border border-erro/40 bg-erro/10 p-2.5 text-xs leading-relaxed">
+                  <p className="font-medium text-erro">o arquivo não carrega</p>
+                  <p className="text-suave">
+                    {ep.defeito ?? "defeito não informado"}
+                  </p>
+                  <p className="text-tenue">
+                    O linter não chegou a rodar: ele julga o conteúdo de uma
+                    pauta bem formada, e esta não chega a ser lida.
+                  </p>
+                </div>
+              ) : (
+                <ListaDeAchados achados={ep.achados} />
+              )}
 
-              {ep.achados.length > 0 && !proposta ? (
+              {ep.achados.length > 0 && ep.estado !== "quebrada" && !proposta ? (
                 <div className="space-y-2 border-t border-borda pt-3">
                   <Botao
                     variante="contorno"

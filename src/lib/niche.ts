@@ -233,14 +233,43 @@ export async function verEpisodio(slug: string): Promise<Episodio> {
 
 /** Grava a pauta e devolve a leitura nova — o linter roda no salvamento. */
 export async function salvarPauta(slug: string, yaml: string): Promise<Episodio> {
+  // A mesma recusa das duas pontas. No serviço porque ele é público; aqui
+  // porque no modo local não existe serviço nenhum para recusar.
+  if (!yaml.trim()) {
+    throw new Error(
+      "a pauta está em branco e NÃO foi gravada — o arquivo anterior " +
+        "continua no disco. Cole o conteúdo antes de salvar.",
+    );
+  }
   if (remoto()) {
     return chamar<Episodio>(`/pautas/${slug}`, {
       method: "PUT",
       body: JSON.stringify({ yaml }),
     });
   }
-  await writeFile(caminhoDaPauta(slug), yaml, "utf8");
+  const destino = caminhoDaPauta(slug);
+  if (existsSync(destino)) {
+    const anterior = await readFile(destino, "utf8");
+    if (anterior.trim() && anterior !== yaml) {
+      await writeFile(`${destino}.anterior`, anterior, "utf8");
+    }
+  }
+  await writeFile(destino, yaml, "utf8");
   return verEpisodio(slug);
+}
+
+/** A versão de antes do último salvamento, se houver. */
+export async function pautaAnterior(slug: string): Promise<string | null> {
+  if (remoto()) {
+    try {
+      const r = await chamar<{ yaml: string }>(`/pautas/${slug}/anterior`);
+      return r.yaml;
+    } catch {
+      return null;
+    }
+  }
+  const copia = `${caminhoDaPauta(slug)}.anterior`;
+  return existsSync(copia) ? readFile(copia, "utf8") : null;
 }
 
 export async function criarPauta(titulo: string, slug?: string): Promise<Episodio> {

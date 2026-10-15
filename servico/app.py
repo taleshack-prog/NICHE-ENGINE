@@ -158,9 +158,37 @@ def salvar(slug: str, corpo: dict = Body(...)) -> dict[str, Any]:
     conteudo = corpo.get("yaml")
     if not isinstance(conteudo, str):
         raise HTTPException(400, "faltou o campo yaml")
+    # Pauta em branco não é um salvamento, é uma perda. O caminho que leva
+    # até aqui é banal: abrir o episódio, selecionar tudo para colar, e
+    # salvar antes de colar. Depois disso o arquivo não carrega mais, o
+    # editor abre vazio de novo, e o próximo salvamento confirma o estrago.
+    if not conteudo.strip():
+        raise HTTPException(
+            400,
+            "a pauta está em branco e NÃO foi gravada — o arquivo anterior "
+            "continua no disco. Cole o conteúdo antes de salvar.",
+        )
+
     arquivo = caminho(slug)
+    # Uma cópia da versão que está saindo. Uma só, sempre a última: é o
+    # bastante para desfazer um salvamento ruim e não vira lixo no volume.
+    if arquivo.exists():
+        anterior = arquivo.read_text(encoding="utf-8")
+        if anterior.strip() and anterior != conteudo:
+            arquivo.with_suffix(".yml.anterior").write_text(
+                anterior, encoding="utf-8")
+
     arquivo.write_text(conteudo, encoding="utf-8")
     return relatorio.detalhe(arquivo)
+
+
+@api.get("/pautas/{slug}/anterior", dependencies=[Depends(autorizar)])
+def anterior(slug: str) -> dict[str, Any]:
+    """A versão de antes do último salvamento, se houver."""
+    copia = caminho(slug).with_suffix(".yml.anterior")
+    if not copia.exists():
+        raise HTTPException(404, "não há versão anterior guardada")
+    return {"yaml": copia.read_text(encoding="utf-8")}
 
 
 @api.delete("/pautas/{slug}", dependencies=[Depends(autorizar)])

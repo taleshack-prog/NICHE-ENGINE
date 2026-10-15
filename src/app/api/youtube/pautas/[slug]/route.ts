@@ -1,16 +1,25 @@
 import { NextResponse } from "next/server";
 import { exigirSessao } from "@/lib/auth";
-import { apagarPauta, salvarPauta, verEpisodio } from "@/lib/niche";
+import { apagarPauta, pautaAnterior, salvarPauta, verEpisodio } from "@/lib/niche";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ slug: string }> },
 ) {
   await exigirSessao();
   const { slug } = await params;
   try {
+    // ?anterior=1 devolve só o texto da versão de antes do último
+    // salvamento. Não grava nada: quem decide é quem está no editor.
+    if (new URL(req.url).searchParams.get("anterior")) {
+      const yaml = await pautaAnterior(slug);
+      if (!yaml) {
+        return NextResponse.json({ erro: "não há versão anterior" }, { status: 404 });
+      }
+      return NextResponse.json({ yaml });
+    }
     return NextResponse.json(await verEpisodio(slug));
   } catch (e) {
     return NextResponse.json({ erro: (e as Error).message }, { status: 400 });
