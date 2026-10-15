@@ -1,7 +1,6 @@
-import { unlink } from "node:fs/promises";
 import { NextResponse } from "next/server";
 import { exigirSessao } from "@/lib/auth";
-import { caminhoDaPauta, salvarPauta, verEpisodio } from "@/lib/niche";
+import { apagarPauta, salvarPauta, verEpisodio } from "@/lib/niche";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +50,7 @@ export async function DELETE(
   await exigirSessao();
   const { slug } = await params;
   try {
-    await unlink(caminhoDaPauta(slug));
+    await apagarPauta(slug);
     return NextResponse.json({ apagada: slug });
   } catch (e) {
     return NextResponse.json({ erro: (e as Error).message }, { status: 400 });

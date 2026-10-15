@@ -1,5 +1,3 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
 import { NextResponse } from "next/server";
 import { exigirSessao } from "@/lib/auth";
 import { iniciarMontagem, lerTrabalho, verEpisodio } from "@/lib/niche";
@@ -11,8 +9,6 @@ export async function POST(req: Request) {
   await exigirSessao();
   const corpo = (await req.json()) as {
     slug?: string;
-    obras?: string;
-    ilustra?: string;
     voz?: string;
     trilha?: string;
     tempos?: string;
@@ -23,6 +19,9 @@ export async function POST(req: Request) {
   }
 
   try {
+    // A conferência acontece aqui E no serviço. Aqui para a tela poder
+    // devolver os achados junto do 409; lá porque o serviço é público e não
+    // pode confiar em quem chama.
     const ep = await verEpisodio(corpo.slug);
     if (ep.erros > 0 && !corpo.forcar) {
       return NextResponse.json(
@@ -30,31 +29,7 @@ export async function POST(req: Request) {
         { status: 409 },
       );
     }
-
-    const extras: string[] = [];
-    // Pastas e arquivos vêm digitados pelo usuário. Conferir a existência aqui
-    // transforma "ffmpeg falhou" três minutos depois em uma frase clara agora.
-    for (const [bandeira, valor] of [
-      ["--obras", corpo.obras], ["--ilustra", corpo.ilustra],
-      ["--voz", corpo.voz], ["--trilha", corpo.trilha],
-    ] as const) {
-      if (!valor) continue;
-      // turbopackIgnore: caminho montado em tempo de execução a partir do que
-      // o usuário digitou. Sem a marca, a análise estática conclui que o
-      // projeto inteiro pode ser lido e empacota tudo na saída do build.
-      const alvo = path.isAbsolute(valor)
-        ? valor
-        : path.join(/* turbopackIgnore: true */ process.cwd(), valor);
-      if (!existsSync(alvo)) {
-        return NextResponse.json(
-          { erro: `não achei ${bandeira} ${valor}` }, { status: 400 });
-      }
-      extras.push(bandeira, alvo);
-    }
-    if (corpo.tempos) extras.push("--tempos", corpo.tempos);
-    if (corpo.forcar) extras.push("--forcar");
-
-    return NextResponse.json(await iniciarMontagem(corpo.slug, extras));
+    return NextResponse.json(await iniciarMontagem(corpo.slug, corpo));
   } catch (e) {
     return NextResponse.json({ erro: (e as Error).message }, { status: 400 });
   }

@@ -1,0 +1,11 @@
+# O contexto de build vai inteiro para o daemon: sem isto, node_modules e
+# .next transformam um build de segundos em minutos.
+node_modules
+.next
+.git
+renders
+.niche-jobs
+public/midia
+__pycache__
+*.pyc
+.env

@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, ListVideo } from "lucide-react";
+import { BookOpen, ListVideo, Images } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ITENS = [
   { href: "/youtube", rotulo: "Episódios", Icone: ListVideo, exato: true },
+  { href: "/youtube/acervo", rotulo: "Acervo", Icone: Images, exato: false },
   { href: "/youtube/manual", rotulo: "Como funciona", Icone: BookOpen, exato: false },
 ] as const;
 

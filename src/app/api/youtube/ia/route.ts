@@ -1,11 +1,9 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { NextResponse } from "next/server";
 import { exigirSessao } from "@/lib/auth";
 import { IAIndisponivelError } from "@/lib/ai";
 import {
   conferirYaml,
-  RAIZ,
+  criarPauta,
   salvarPauta,
   verEpisodio,
   type Episodio,
@@ -18,7 +16,6 @@ import {
   promptDeRascunho,
 } from "@/lib/pauta-ia";
 
-const executar = promisify(execFile);
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
@@ -65,7 +62,7 @@ export async function POST(req: Request) {
       // O arquivo nasce pelo `niche novo` — mesmo esqueleto do botão em
       // branco — e só depois recebe o texto da IA. Se a geração falhar, o
       // episódio existe e é editável à mão, em vez de nada ter acontecido.
-      const criado = await criar(c.titulo.trim());
+      const criado = await criarPauta(c.titulo.trim());
       const { texto, uso } = await gerar(prompt);
 
       let episodio: Episodio;
@@ -131,13 +128,4 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ erro: (e as Error).message }, { status: 500 });
   }
-}
-
-async function criar(titulo: string): Promise<Episodio> {
-  const { stdout } = await executar(
-    process.env.NICHE_PYTHON ?? "python3",
-    ["-m", "niche", "novo", titulo, "--json"],
-    { cwd: RAIZ, maxBuffer: 16 * 1024 * 1024 },
-  );
-  return JSON.parse(stdout) as Episodio;
 }

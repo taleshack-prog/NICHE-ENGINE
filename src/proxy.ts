@@ -15,7 +15,12 @@ const COOKIE = "niche_session";
 const PUBLICAS = ["/login", "/api/auth"];
 
 export default async function proxy(req: NextRequest) {
-  if (process.env.AUTH_DISABLED === "true") return NextResponse.next();
+  // Em produção a variável é ignorada: ver a nota em src/lib/auth.ts. O
+  // Edge Runtime não importa aquele módulo (ele usa node:crypto), então a
+  // mesma regra está escrita aqui — e as duas precisam concordar.
+  if (process.env.NODE_ENV !== "production" && process.env.AUTH_DISABLED === "true") {
+    return NextResponse.next();
+  }
 
   const { pathname } = req.nextUrl;
   if (PUBLICAS.some((p) => pathname.startsWith(p))) return NextResponse.next();

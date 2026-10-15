@@ -15,12 +15,10 @@ from pathlib import Path
 from typing import Any
 
 from . import linter
+from .lugares import PAUTAS as PASTA_PAUTAS, RENDERS as PASTA_RENDERS
 from .montagem import cronometrar, durar_blocos
 from .pauta import Pauta, PautaInvalida, carregar
 from .proveniencia import RAIZ, carregar as carregar_modulo
-
-PASTA_PAUTAS = RAIZ / "pautas"
-PASTA_RENDERS = RAIZ / "renders"
 
 
 def video_de(slug: str) -> Path:

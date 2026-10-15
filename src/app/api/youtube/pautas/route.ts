@@ -1,10 +1,7 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { NextResponse } from "next/server";
 import { exigirSessao } from "@/lib/auth";
-import { listarEpisodios, RAIZ, type Episodio } from "@/lib/niche";
+import { criarPauta, listarEpisodios } from "@/lib/niche";
 
-const executar = promisify(execFile);
 export const dynamic = "force-dynamic";
 
 export async function GET() {
@@ -15,9 +12,10 @@ export async function GET() {
 /**
  * Cria o esqueleto de um episódio.
  *
- * Quem escreve o arquivo é o `niche novo`, não esta rota: o esqueleto criado
- * pelo botão e o criado pelo terminal têm que ser o mesmo, e um modelo
- * duplicado em TypeScript divergiria no primeiro conserto.
+ * Quem escreve o arquivo é o `niche novo` — pelo subprocesso local ou pelo
+ * serviço —, nunca esta rota: o esqueleto criado pelo botão e o criado pelo
+ * terminal têm que ser o mesmo, e um modelo duplicado em TypeScript
+ * divergiria no primeiro conserto.
  */
 export async function POST(req: Request) {
   await exigirSessao();
@@ -25,19 +23,9 @@ export async function POST(req: Request) {
   if (!titulo?.trim()) {
     return NextResponse.json({ erro: "faltou o título" }, { status: 400 });
   }
-
-  const args = ["-m", "niche", "novo", titulo.trim(), "--json"];
-  if (slug?.trim()) args.push("--slug", slug.trim());
-
   try {
-    const { stdout } = await executar(process.env.NICHE_PYTHON ?? "python3", args, {
-      cwd: RAIZ,
-      maxBuffer: 16 * 1024 * 1024,
-    });
-    return NextResponse.json(JSON.parse(stdout) as Episodio, { status: 201 });
+    return NextResponse.json(await criarPauta(titulo.trim(), slug?.trim()), { status: 201 });
   } catch (e) {
-    const erro = e as { stderr?: string; message: string };
-    return NextResponse.json(
-      { erro: (erro.stderr || erro.message).trim() }, { status: 400 });
+    return NextResponse.json({ erro: (e as Error).message }, { status: 400 });
   }
 }

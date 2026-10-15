@@ -47,3 +47,6 @@ __pycache__/
 /renders/*
 !/renders/.gitkeep
 /.niche-jobs/
+
+# acervo local (obras, ilustrações, trilhas) — mídia não entra no histórico
+/acervo/

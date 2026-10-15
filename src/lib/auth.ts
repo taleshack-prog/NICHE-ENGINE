@@ -16,7 +16,17 @@ import { SignJWT, jwtVerify } from "jose";
 const COOKIE = "niche_session";
 const DURACAO_SEG = 60 * 60 * 24 * 30; // 30 dias
 
+/**
+ * Bypass de login — SÓ fora de produção.
+ *
+ * O `.env` local tem AUTH_DISABLED="true", que é o certo para desenvolver. Se
+ * esse arquivo for copiado para as variáveis da Vercel (e é o caminho natural:
+ * abre o .env, copia tudo, cola), o dashboard inteiro fica aberto na internet
+ * com os posts, as métricas e o botão de publicar. Ignorar a variável em
+ * produção custa nada e fecha esse buraco de uma vez.
+ */
 export function authDesabilitada(): boolean {
+  if (process.env.NODE_ENV === "production") return false;
   return process.env.AUTH_DISABLED === "true";
 }
 

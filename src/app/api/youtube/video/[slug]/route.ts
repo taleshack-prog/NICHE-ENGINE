@@ -2,7 +2,7 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { exigirSessao } from "@/lib/auth";
-import { PASTA_RENDERS } from "@/lib/niche";
+import { buscarVideo, PASTA_RENDERS, remoto } from "@/lib/niche";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +28,10 @@ function fluxo(caminho: string, opcoes?: Faixa): ReadableStream<Uint8Array> {
  * Sem Range o <video> baixa os 11 MB inteiros antes do primeiro quadro e não
  * deixa arrastar a linha do tempo — que é justamente o que se quer fazer ao
  * conferir se a legenda caiu no lugar certo.
+ *
+ * Com serviço remoto esta rota é um PROXY: o mp4 mora no volume do Railway,
+ * atrás de um token que não pode ir para o navegador. O Range é repassado
+ * para o serviço, então arrastar a linha continua funcionando.
  */
 export async function GET(
   req: Request,
@@ -38,13 +42,29 @@ export async function GET(
   if (!/^[\w-]{1,80}$/.test(slug)) {
     return NextResponse.json({ erro: "nome inválido" }, { status: 400 });
   }
+  const range = req.headers.get("range");
+
+  if (remoto()) {
+    const r = await buscarVideo(slug, range);
+    if (!r.ok || !r.body) {
+      return NextResponse.json(
+        { erro: r.status === 404 ? "ainda não montado" : `serviço respondeu ${r.status}` },
+        { status: r.status === 404 ? 404 : 502 },
+      );
+    }
+    const cabecalhos = new Headers({ "Content-Type": "video/mp4", "Accept-Ranges": "bytes" });
+    for (const nome of ["content-length", "content-range"]) {
+      const v = r.headers.get(nome);
+      if (v) cabecalhos.set(nome, v);
+    }
+    return new NextResponse(r.body, { status: r.status, headers: cabecalhos });
+  }
+
   const arquivo = path.join(PASTA_RENDERS, `${slug}.mp4`);
   if (!existsSync(arquivo)) {
     return NextResponse.json({ erro: "ainda não montado" }, { status: 404 });
   }
-
   const { size } = statSync(arquivo);
-  const range = req.headers.get("range");
   if (range) {
     const [cru0, cru1] = range.replace(/bytes=/, "").split("-");
     const inicio = Number(cru0);

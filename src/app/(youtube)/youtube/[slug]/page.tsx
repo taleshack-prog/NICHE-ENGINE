@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { EditorEpisodio } from "./editor-episodio";
-import { verEpisodio } from "@/lib/niche";
+import { lerAcervo, verEpisodio, type ItemDoAcervo } from "@/lib/niche";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +18,15 @@ export default async function PaginaEpisodio({
   } catch {
     notFound();
   }
+  // A lista de áudio vem junto para a aba Montagem oferecer trilha e narração
+  // como escolha, em vez de caminho digitado — caminho digitado só falha três
+  // minutos depois, quando o ffmpeg não acha o arquivo.
+  let audio: ItemDoAcervo[] = [];
+  try {
+    audio = (await lerAcervo()).audio;
+  } catch {
+    /* acervo indisponível: a aba mostra o aviso e segue */
+  }
 
   return (
     <>
@@ -28,7 +37,7 @@ export default async function PaginaEpisodio({
         <ArrowLeft className="size-3.5" />
         Episódios
       </Link>
-      <EditorEpisodio inicial={episodio} />
+      <EditorEpisodio inicial={episodio} audio={audio} />
     </>
   );
 }

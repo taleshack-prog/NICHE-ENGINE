@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -18,9 +19,9 @@ import {
 import { PainelDeCusto, type Estimativa } from "../painel-custo";
 import { Botao } from "@/components/ui/botao";
 import { Card, CardCabecalho, CardConteudo, CardTitulo } from "@/components/ui/card";
-import { AreaTexto, Input, Rotulo } from "@/components/ui/campos";
+import { AreaTexto, Input, Rotulo, Selecao } from "@/components/ui/campos";
 import { Selo, type SeloTom } from "@/components/ui/selo";
-import type { Achado, Episodio } from "@/lib/niche";
+import type { Achado, Episodio, ItemDoAcervo } from "@/lib/niche";
 
 const TOM: Record<Episodio["estado"], SeloTom> = {
   quebrada: "erro", rascunho: "alerta", pronta: "acento",
@@ -102,7 +103,13 @@ function ListaDeAchados({ achados }: { achados: Achado[] }) {
   );
 }
 
-export function EditorEpisodio({ inicial }: { inicial: Episodio }) {
+export function EditorEpisodio({
+  inicial,
+  audio,
+}: {
+  inicial: Episodio;
+  audio: ItemDoAcervo[];
+}) {
   const router = useRouter();
   const [ep, setEp] = useState(inicial);
   const [yaml, setYaml] = useState(inicial.yaml ?? "");
@@ -124,8 +131,6 @@ export function EditorEpisodio({ inicial }: { inicial: Episodio }) {
   const [pUrl, setPUrl] = useState(String(pub.url ?? ""));
   const [salvandoPub, setSalvandoPub] = useState(false);
 
-  const [obras, setObras] = useLembrado("niche.obras");
-  const [ilustra, setIlustra] = useLembrado("niche.ilustra");
   const [voz, setVoz] = useState("");
   const [trilha, setTrilha] = useLembrado("niche.trilha");
   const [tempos, setTempos] = useState("");
@@ -231,9 +236,7 @@ export function EditorEpisodio({ inicial }: { inicial: Episodio }) {
     const r = await fetch("/api/youtube/montar", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        slug: ep.slug, obras, ilustra, voz, trilha, tempos, forcar,
-      }),
+      body: JSON.stringify({ slug: ep.slug, voz, trilha, tempos, forcar }),
     });
     const dados = await r.json();
     if (!r.ok) {
@@ -538,52 +541,64 @@ export function EditorEpisodio({ inicial }: { inicial: Episodio }) {
 
               {aba === "montagem" ? (
                 <div className="space-y-3">
-                  {ep.precisa_obras ? (
-                    <div>
-                      <Rotulo>Pasta das obras</Rotulo>
-                      <Input
-                        value={obras}
-                        onChange={(e) => setObras(e.target.value)}
-                        placeholder="/home/você/obras"
-                      />
-                    </div>
+                  {audio.length === 0 ? (
+                    <p className="rounded-md border border-alerta/30 bg-alerta/5 p-2.5 text-[11px] leading-relaxed text-suave">
+                      Nenhuma trilha ou narração no acervo. Suba os arquivos em{" "}
+                      <Link href="/youtube/acervo" className="text-acento hover:underline">
+                        Acervo
+                      </Link>{" "}
+                      e eles aparecem aqui. Sem áudio o episódio monta mudo.
+                    </p>
                   ) : null}
-                  {ep.precisa_ilustracoes ? (
-                    <div>
-                      <Rotulo>Pasta das ilustrações</Rotulo>
-                      <Input
-                        value={ilustra}
-                        onChange={(e) => setIlustra(e.target.value)}
-                        placeholder="/home/você/ilustra"
-                      />
-                    </div>
+
+                  {(ep.precisa_obras || ep.precisa_ilustracoes) ? (
+                    <p className="text-[11px] leading-relaxed text-tenue">
+                      As obras e ilustrações saem do{" "}
+                      <Link href="/youtube/acervo" className="text-acento hover:underline">
+                        Acervo
+                      </Link>
+                      , pelo nome que a pauta declara.
+                    </p>
                   ) : null}
+
                   <div>
-                    <Rotulo>Trilha (opcional)</Rotulo>
-                    <Input
+                    <Rotulo htmlFor="m-trilha">Trilha</Rotulo>
+                    <Selecao
+                      id="m-trilha"
                       value={trilha}
                       onChange={(e) => setTrilha(e.target.value)}
-                      placeholder="/home/você/trilha.mp3"
-                    />
+                    >
+                      <option value="">sem trilha</option>
+                      {audio.map((a) => (
+                        <option key={a.nome} value={a.nome}>
+                          {a.nome}
+                        </option>
+                      ))}
+                    </Selecao>
                   </div>
                   <div>
-                    <Rotulo>Narração (opcional)</Rotulo>
-                    <Input
-                      value={voz}
-                      onChange={(e) => setVoz(e.target.value)}
-                      placeholder="/home/você/narracao.ogg"
-                    />
+                    <Rotulo htmlFor="m-voz">Narração</Rotulo>
+                    <Selecao id="m-voz" value={voz} onChange={(e) => setVoz(e.target.value)}>
+                      <option value="">sem narração</option>
+                      {audio.map((a) => (
+                        <option key={a.nome} value={a.nome}>
+                          {a.nome}
+                        </option>
+                      ))}
+                    </Selecao>
+                    <p className="mt-1 text-[11px] text-tenue">
+                      Com narração a legenda segue o ritmo de fala; sem ela, o de
+                      leitura, que é mais lento.
+                    </p>
                   </div>
                   <div>
-                    <Rotulo>Tempos medidos (opcional)</Rotulo>
+                    <Rotulo htmlFor="m-tempos">Tempos medidos (opcional)</Rotulo>
                     <Input
+                      id="m-tempos"
                       value={tempos}
                       onChange={(e) => setTempos(e.target.value)}
                       placeholder="9.52,10.11,… — saída de niche sincronizar"
                     />
-                    <p className="mt-1 text-[11px] text-tenue">
-                      Sem narração a legenda é cronometrada pelo ritmo de leitura.
-                    </p>
                   </div>
 
                   {log ? (
