@@ -1,9 +1,10 @@
+import Link from "next/link";
 import { logout } from "@/actions/auth";
 import { Navegacao } from "@/components/layout/navegacao";
 import { Botao } from "@/components/ui/botao";
 import { Selo } from "@/components/ui/selo";
 import { authDesabilitada } from "@/lib/auth";
-import { LogOut, Zap } from "lucide-react";
+import { Clapperboard, LogOut, Zap } from "lucide-react";
 
 /**
  * Casca do app: barra lateral no desktop, barra horizontal no mobile.
@@ -31,6 +32,18 @@ export function Casca({
 
         <div className="px-2 pb-3 lg:px-2">
           <Navegacao />
+        </div>
+
+        {/* O caminho de volta. A casca do canal já linkava para cá; sem o
+            inverso, chegar ao /youtube exigia digitar a URL. */}
+        <div className="border-t border-borda px-2 py-3">
+          <Link
+            href="/youtube"
+            className="flex items-center gap-2 rounded-md px-3 py-2 text-xs text-tenue transition-colors hover:bg-superficie-2 hover:text-suave"
+          >
+            <Clapperboard className="size-3.5" />
+            Canal de Shorts
+          </Link>
         </div>
 
         <div className="hidden border-t border-borda px-4 py-3 lg:block">
