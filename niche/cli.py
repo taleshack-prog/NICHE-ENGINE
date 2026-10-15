@@ -54,11 +54,46 @@ def cmd_listar(args) -> None:
 
 
 def cmd_ver(args) -> None:
-    """Uma pauta em JSON, com a régua de planos e os achados do linter."""
+    """
+    Uma pauta em JSON, com a régua de planos e os achados do linter.
+
+    `niche ver -` lê a pauta da entrada padrão. É o que permite conferir um
+    rascunho de IA ANTES de gravá-lo por cima do arquivo do usuário.
+    """
+    import tempfile
+
     from . import relatorio
+
+    if str(args.pauta) == "-":
+        bruto = sys.stdin.read()
+        tmp = Path(tempfile.mkstemp(suffix=".yml", prefix="proposta-")[1])
+        try:
+            tmp.write_text(bruto, encoding="utf-8")
+            print(relatorio.despejar(relatorio.detalhe(tmp)))
+        finally:
+            tmp.unlink(missing_ok=True)
+        return
+
     if not args.pauta.exists():
         sys.exit(f"não achei a pauta: {args.pauta}")
     print(relatorio.despejar(relatorio.detalhe(args.pauta)))
+
+
+def cmd_publicar(args) -> None:
+    """Grava título, descrição e link da publicação na própria pauta."""
+    import json as _json
+
+    from . import publicacao
+    from .relatorio import despejar, detalhe
+
+    if not args.pauta.exists():
+        sys.exit(f"não achei a pauta: {args.pauta}")
+    dados = _json.loads(args.dados if args.dados != "-" else sys.stdin.read())
+    try:
+        publicacao.gravar(args.pauta, dados)
+    except Exception as e:  # noqa: BLE001 — yaml inválido, disco cheio…
+        sys.exit(f"não gravei: {e}")
+    print(despejar(detalhe(args.pauta)))
 
 
 def cmd_novo(args) -> None:
@@ -220,8 +255,14 @@ def main(argv: list[str] | None = None) -> None:
     ls.set_defaults(func=cmd_listar)
 
     ve = sub.add_parser("ver", help="uma pauta em JSON, com a régua de planos")
-    ve.add_argument("pauta", type=Path)
+    ve.add_argument("pauta", type=Path, help="arquivo, ou - para ler da entrada")
     ve.set_defaults(func=cmd_ver)
+
+    pb = sub.add_parser("publicar", help="grava o bloco publicacao: na pauta")
+    pb.add_argument("pauta", type=Path)
+    pb.add_argument("--dados", required=True,
+                    help='JSON com titulo/descricao/hashtags/url/publicado_em, ou -')
+    pb.set_defaults(func=cmd_publicar)
 
     no = sub.add_parser("novo", help="cria o esqueleto de uma pauta")
     no.add_argument("titulo")

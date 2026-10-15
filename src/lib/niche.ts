@@ -118,6 +118,36 @@ export async function salvarPauta(slug: string, yaml: string): Promise<Episodio>
   return verEpisodio(slug);
 }
 
+/**
+ * Passa um YAML pelo linter SEM gravá-lo.
+ *
+ * É o que permite conferir uma proposta de IA antes de ela encostar no
+ * arquivo do usuário: a proposta aparece com os achados do lado, e quem
+ * decide aceitar é ele.
+ */
+export async function conferirYaml(yaml: string): Promise<Episodio> {
+  const filho = spawn(python(), ["-m", "niche", "ver", "-"], { cwd: RAIZ });
+  filho.stdin.write(yaml);
+  filho.stdin.end();
+  const partes: string[] = [];
+  const erros: string[] = [];
+  filho.stdout.on("data", (d) => partes.push(String(d)));
+  filho.stderr.on("data", (d) => erros.push(String(d)));
+  const codigo: number = await new Promise((ok) => filho.on("close", (c) => ok(c ?? 1)));
+  if (codigo !== 0) throw new Error(erros.join("").trim() || "pauta ilegível");
+  return JSON.parse(partes.join("")) as Episodio;
+}
+
+/** Grava o bloco `publicacao:` preservando comentários e formatação. */
+export async function gravarPublicacao(
+  slug: string,
+  dados: Record<string, unknown>,
+): Promise<Episodio> {
+  return niche<Episodio>([
+    "publicar", caminhoDaPauta(slug), "--dados", JSON.stringify(dados),
+  ]);
+}
+
 // ── trabalhos de montagem ────────────────────────────────────────────────────
 
 export type Trabalho = {

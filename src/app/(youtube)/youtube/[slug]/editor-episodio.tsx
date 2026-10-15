@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -9,11 +10,15 @@ import {
   Mic,
   Play,
   Save,
+  Sparkles,
+  Trash2,
   TriangleAlert,
+  Youtube,
 } from "lucide-react";
+import { PainelDeCusto, type Estimativa } from "../painel-custo";
 import { Botao } from "@/components/ui/botao";
 import { Card, CardCabecalho, CardConteudo, CardTitulo } from "@/components/ui/card";
-import { Input, Rotulo } from "@/components/ui/campos";
+import { AreaTexto, Input, Rotulo } from "@/components/ui/campos";
 import { Selo, type SeloTom } from "@/components/ui/selo";
 import type { Achado, Episodio } from "@/lib/niche";
 
@@ -22,7 +27,12 @@ const TOM: Record<Episodio["estado"], SeloTom> = {
   montada: "roxo", publicada: "ok",
 };
 
-type Aba = "fala" | "linha" | "fontes" | "montagem";
+// Limites do próprio YouTube. Ficam aqui porque são os únicos números do
+// dashboard que não vêm do Python — são regra da plataforma, não da pauta.
+const LIMITE_TITULO = 100;
+const LIMITE_DESCRICAO = 5000;
+
+type Aba = "fala" | "linha" | "fontes" | "montagem" | "publicação";
 
 /**
  * Pastas de obras e ilustrações mudam pouco; digitar toda vez é imposto.
@@ -93,11 +103,26 @@ function ListaDeAchados({ achados }: { achados: Achado[] }) {
 }
 
 export function EditorEpisodio({ inicial }: { inicial: Episodio }) {
+  const router = useRouter();
   const [ep, setEp] = useState(inicial);
   const [yaml, setYaml] = useState(inicial.yaml ?? "");
   const [salvando, setSalvando] = useState(false);
   const [erroSalvar, setErroSalvar] = useState<string | null>(null);
   const [aba, setAba] = useState<Aba>("fala");
+
+  const [estimativaIa, setEstimativaIa] = useState<Estimativa | null>(null);
+  const [proposta, setProposta] = useState<string | null>(null);
+  const [depois, setDepois] = useState<Episodio | null>(null);
+  const [ocupadoIa, setOcupadoIa] = useState<"" | "estimando" | "corrigindo">("");
+
+  const pub = (ep.publicacao ?? {}) as Record<string, unknown>;
+  const [pTitulo, setPTitulo] = useState(String(pub.titulo ?? ""));
+  const [pDescricao, setPDescricao] = useState(String(pub.descricao ?? ""));
+  const [pHashtags, setPHashtags] = useState(
+    Array.isArray(pub.hashtags) ? (pub.hashtags as string[]).join(" ") : "",
+  );
+  const [pUrl, setPUrl] = useState(String(pub.url ?? ""));
+  const [salvandoPub, setSalvandoPub] = useState(false);
 
   const [obras, setObras] = useLembrado("niche.obras");
   const [ilustra, setIlustra] = useLembrado("niche.ilustra");
@@ -131,6 +156,73 @@ export function EditorEpisodio({ inicial }: { inicial: Episodio }) {
     } finally {
       setSalvando(false);
     }
+  }
+
+  /**
+   * Corrigir com IA — a única ação paga desta tela.
+   *
+   * A proposta NÃO sobrescreve o arquivo: volta como texto, já passada pelo
+   * linter, e quem aceita é o usuário. Correção automática aplicada direto
+   * esconderia o que mudou numa pauta que ele vai ler em voz alta.
+   */
+  async function corrigir(acao: "estimar-correcao" | "corrigir") {
+    setOcupadoIa(acao === "corrigir" ? "corrigindo" : "estimando");
+    setErroSalvar(null);
+    try {
+      const r = await fetch("/api/youtube/ia", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ acao, slug: ep.slug, yaml }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.erro ?? "falha na chamada");
+      if (acao === "estimar-correcao") {
+        setEstimativaIa({ ...d, real: false });
+      } else {
+        setProposta(d.proposta);
+        setDepois(d.depois ?? null);
+        setEstimativaIa({ uso: d.uso, precoConfigurado: true, real: true });
+        if (d.aviso) setErroSalvar(d.aviso);
+      }
+    } catch (e) {
+      setErroSalvar((e as Error).message);
+    } finally {
+      setOcupadoIa("");
+    }
+  }
+
+  async function salvarPublicacao() {
+    setSalvandoPub(true);
+    setErroSalvar(null);
+    try {
+      const r = await fetch("/api/youtube/publicar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug: ep.slug,
+          titulo: pTitulo,
+          descricao: pDescricao,
+          hashtags: pHashtags.split(/\s+/).filter(Boolean),
+          url: pUrl,
+          publicado_em: pUrl ? new Date().toISOString().slice(0, 10) : "",
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.erro ?? "falha ao gravar");
+      setEp(d as Episodio);
+      setYaml((d as Episodio).yaml ?? yaml);
+    } catch (e) {
+      setErroSalvar((e as Error).message);
+    } finally {
+      setSalvandoPub(false);
+    }
+  }
+
+  async function apagar() {
+    if (!window.confirm(`Apagar a pauta "${ep.titulo}"? O mp4 montado fica.`)) return;
+    const r = await fetch(`/api/youtube/pautas/${ep.slug}`, { method: "DELETE" });
+    if (r.ok) router.push("/youtube");
+    else setErroSalvar((await r.json()).erro ?? "falha ao apagar");
   }
 
   async function montar(forcar = false) {
@@ -209,6 +301,14 @@ export function EditorEpisodio({ inicial }: { inicial: Episodio }) {
             {montando ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
             Montar
           </Botao>
+          <Botao
+            variante="fantasma"
+            tamanho="icone"
+            onClick={() => void apagar()}
+            title="apagar a pauta"
+          >
+            <Trash2 className="size-4" />
+          </Botao>
         </div>
       </header>
 
@@ -254,20 +354,92 @@ export function EditorEpisodio({ inicial }: { inicial: Episodio }) {
         <div className="space-y-5">
           <Card>
             <CardCabecalho className="flex-row items-center justify-between">
-              <CardTitulo>As quatro regras</CardTitulo>
+              <CardTitulo>As regras</CardTitulo>
               <div className="flex gap-1.5">
                 {ep.erros > 0 ? <Selo tom="erro">{ep.erros} erro</Selo> : null}
                 {ep.avisos > 0 ? <Selo tom="alerta">{ep.avisos} aviso</Selo> : null}
               </div>
             </CardCabecalho>
-            <CardConteudo>
+            <CardConteudo className="space-y-3">
               <ListaDeAchados achados={ep.achados} />
+
+              {ep.achados.length > 0 && !proposta ? (
+                <div className="space-y-2 border-t border-borda pt-3">
+                  <Botao
+                    variante="contorno"
+                    tamanho="sm"
+                    onClick={() => void corrigir("estimar-correcao")}
+                    disabled={ocupadoIa !== ""}
+                  >
+                    {ocupadoIa === "estimando" ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="size-3.5" />
+                    )}
+                    Corrigir com IA
+                  </Botao>
+                  {estimativaIa ? (
+                    <>
+                      <PainelDeCusto estimativa={estimativaIa} />
+                      <Botao
+                        variante="primario"
+                        tamanho="sm"
+                        onClick={() => void corrigir("corrigir")}
+                        disabled={ocupadoIa !== ""}
+                      >
+                        {ocupadoIa === "corrigindo" ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : null}
+                        Gerar proposta
+                      </Botao>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {proposta ? (
+                <div className="space-y-2 border-t border-borda pt-3">
+                  <p className="text-xs text-suave">
+                    A proposta <strong className="text-texto">não foi gravada</strong>.
+                    {depois
+                      ? ` Passada pelo linter: ${depois.erros} erro, ${depois.avisos} aviso.`
+                      : " Não consegui passá-la pelo linter."}
+                  </p>
+                  {estimativaIa ? <PainelDeCusto estimativa={estimativaIa} /> : null}
+                  <pre className="max-h-64 overflow-auto rounded-md bg-fundo p-2.5 font-mono text-[11px] leading-relaxed text-suave">
+                    {proposta}
+                  </pre>
+                  <div className="flex gap-2">
+                    <Botao
+                      variante="primario"
+                      tamanho="sm"
+                      onClick={() => {
+                        setYaml(proposta);
+                        setProposta(null);
+                        setEstimativaIa(null);
+                      }}
+                    >
+                      usar no editor
+                    </Botao>
+                    <Botao
+                      variante="fantasma"
+                      tamanho="sm"
+                      onClick={() => {
+                        setProposta(null);
+                        setEstimativaIa(null);
+                      }}
+                    >
+                      descartar
+                    </Botao>
+                  </div>
+                </div>
+              ) : null}
             </CardConteudo>
           </Card>
 
           <Card>
             <div className="flex gap-1 border-b border-borda px-2 pt-2">
-              {(["fala", "linha", "fontes", "montagem"] as const).map((a) => (
+              {(["fala", "linha", "fontes", "montagem", "publicação"] as const).map((a) => (
                 <button
                   key={a}
                   onClick={() => setAba(a)}
@@ -427,6 +599,113 @@ export function EditorEpisodio({ inicial }: { inicial: Episodio }) {
                       {estadoTrabalho}
                     </Selo>
                   ) : null}
+                </div>
+              ) : null}
+
+              {aba === "publicação" ? (
+                <div className="space-y-3">
+                  <p className="text-[11px] leading-relaxed text-tenue">
+                    Grava no bloco <code className="text-suave">publicacao:</code> da
+                    própria pauta — o episódio é um arquivo só, e o que foi ao ar fica
+                    junto do que foi dito. Os comentários do arquivo são preservados.
+                  </p>
+                  <div>
+                    <Rotulo htmlFor="p-titulo">
+                      Título{" "}
+                      <span
+                        className={
+                          pTitulo.length > LIMITE_TITULO ? "text-erro" : "text-tenue"
+                        }
+                      >
+                        {pTitulo.length}/{LIMITE_TITULO}
+                      </span>
+                    </Rotulo>
+                    <Input
+                      id="p-titulo"
+                      value={pTitulo}
+                      onChange={(e) => setPTitulo(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Rotulo htmlFor="p-descricao">
+                      Descrição{" "}
+                      <span
+                        className={
+                          pDescricao.length > LIMITE_DESCRICAO ? "text-erro" : "text-tenue"
+                        }
+                      >
+                        {pDescricao.length}/{LIMITE_DESCRICAO}
+                      </span>
+                    </Rotulo>
+                    <AreaTexto
+                      id="p-descricao"
+                      rows={6}
+                      value={pDescricao}
+                      onChange={(e) => setPDescricao(e.target.value)}
+                      placeholder={
+                        "O que o episódio afirma, e as fontes com link.\n" +
+                        "Crédito da trilha vai aqui."
+                      }
+                    />
+                    {ep.fontes?.some((f) => f.url) ? (
+                      <Botao
+                        variante="fantasma"
+                        tamanho="sm"
+                        className="mt-1"
+                        onClick={() =>
+                          setPDescricao((d) => {
+                            // Sem o guarda, uma descrição vazia virava duas
+                            // linhas em branco no topo — e o YAML gravava a
+                            // descrição entre aspas com os brancos dentro.
+                            const lista =
+                              "Fontes:\n" +
+                              ep
+                                .fontes!.filter((f) => f.url && f.apelido !== "produto")
+                                .map((f) => `• ${f.titulo} — ${f.url}`)
+                                .join("\n");
+                            const antes = d.trimEnd();
+                            return antes ? `${antes}\n\n${lista}` : lista;
+                          })
+                        }
+                      >
+                        juntar as fontes da pauta
+                      </Botao>
+                    ) : null}
+                  </div>
+                  <div>
+                    <Rotulo htmlFor="p-hashtags">Hashtags</Rotulo>
+                    <Input
+                      id="p-hashtags"
+                      value={pHashtags}
+                      onChange={(e) => setPHashtags(e.target.value)}
+                      placeholder="#neurodivergencia #autismo #web3"
+                    />
+                  </div>
+                  <div>
+                    <Rotulo htmlFor="p-url">Link do vídeo publicado</Rotulo>
+                    <Input
+                      id="p-url"
+                      value={pUrl}
+                      onChange={(e) => setPUrl(e.target.value)}
+                      placeholder="https://youtube.com/shorts/..."
+                    />
+                    <p className="mt-1 text-[11px] text-tenue">
+                      Com o link preenchido o episódio passa a “publicada”.
+                    </p>
+                  </div>
+                  <Botao
+                    variante="primario"
+                    tamanho="sm"
+                    onClick={() => void salvarPublicacao()}
+                    disabled={salvandoPub || pTitulo.length > LIMITE_TITULO}
+                  >
+                    {salvandoPub ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Youtube className="size-3.5" />
+                    )}
+                    Gravar na pauta
+                  </Botao>
                 </div>
               ) : null}
             </CardConteudo>

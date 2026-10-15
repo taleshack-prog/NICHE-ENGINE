@@ -22,6 +22,11 @@ const REGRAS = [
     cobra: "número declara de onde veio",
     veio: "“dezoito estudos, quase quinhentas crianças” é verificável ou é invenção, e a diferença não aparece no vídeo. Número do próprio projeto usa fonte: produto.",
   },
+  {
+    nome: "esqueleto",
+    cobra: "pauta nova precisa ser escrita",
+    veio: "o modelo criado pelo botão PASSAVA no linter: o texto-lembrete tem mais de 40 caracteres e não repete o título, que é tudo o que a regra do ângulo consegue medir sozinha. Rascunho aprovado ensina a preencher placeholder.",
+  },
 ];
 
 const VISUAIS: [string, string][] = [
@@ -115,16 +120,45 @@ export default function PaginaManual() {
 
       <Card>
         <CardCabecalho>
+          <CardTitulo>O que custa dinheiro</CardTitulo>
+        </CardCabecalho>
+        <CardConteudo className="space-y-2 text-sm leading-relaxed text-suave">
+          <p>
+            Só uma coisa: <strong className="text-texto">rascunhar ou corrigir a
+            pauta com IA</strong>. Linter, régua de tempo, montagem, mistura e
+            publicação são código determinístico e custam zero, quantas vezes você
+            rodar.
+          </p>
+          <p>
+            Os dois botões de IA mostram a conta <em>antes</em> de gastar, em tokens,
+            e o número real depois da chamada. O valor em dólar só aparece se você
+            definir <code className="text-texto">ANTHROPIC_PRECO_ENTRADA_USD</code> e{" "}
+            <code className="text-texto">ANTHROPIC_PRECO_SAIDA_USD</code> no{" "}
+            <code className="text-texto">.env</code> — não embuti tabela de preço no
+            código porque ela envelhece sem avisar e o preço do seu contrato pode não
+            ser o da tabela.
+          </p>
+          <p className="text-tenue">
+            A correção nunca grava sozinha: ela volta como proposta, já passada pelo
+            linter, e quem aceita é você.
+          </p>
+        </CardConteudo>
+      </Card>
+
+      <Card>
+        <CardCabecalho>
           <CardTitulo>Pelo terminal</CardTitulo>
           <p className="text-xs text-tenue">O dashboard chama exatamente isto.</p>
         </CardCabecalho>
         <CardConteudo>
           <pre className="overflow-x-auto rounded-md bg-fundo p-3 font-mono text-xs text-suave">
-{`python3 -m niche validar      pautas/03-novo.yml
+{`python3 -m niche novo         "Título do episódio"
+python3 -m niche validar      pautas/03-novo.yml
 python3 -m niche falar        pautas/03-novo.yml
 python3 -m niche sincronizar  pautas/03-novo.yml voz.ogg
 python3 -m niche montar       pautas/03-novo.yml --saida renders/03.mp4 \\
-    --obras ~/obras --ilustra ~/ilustra --trilha trilha.mp3`}
+    --obras ~/obras --ilustra ~/ilustra --trilha trilha.mp3
+python3 -m niche publicar     pautas/03-novo.yml --dados '{"url":"..."}'`}
           </pre>
         </CardConteudo>
       </Card>

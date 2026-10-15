@@ -21,13 +21,18 @@ export type TarefaIA = "roteiro" | "copy" | "decomposicao" | "relatorio";
  * Modelo por tarefa. Sobrescrevível por env (ANTHROPIC_MODEL_*).
  *
  * POR QUE NÃO OS MODELOS DA SPEC: ela fixava claude-sonnet-4-5 e
- * claude-haiku-4-5. Os dois continuam ATIVOS, mas as datas de aposentadoria
- * publicadas por Anthropic são "não antes de 29/09/2026" (Sonnet 4.5) e
- * "não antes de 15/10/2026" (Haiku 4.5) — ou seja, semanas, não anos. Um alias
- * aposentado vira 404 no meio de um roteiro, às 06h, dentro do Workflow A, onde
- * ninguém está olhando.
+ * claude-haiku-4-5. Um alias aposentado vira 404 no meio de um roteiro, às
+ * 06h, dentro do Workflow A, onde ninguém está olhando.
  *
- * Sonnet 5 é o modelo corrente e não tem data anunciada.
+ * Situação conferida na página de depreciações em 14/10/2026:
+ *   claude-sonnet-4-5  DEPRECIADO em 30/09/2026, aposentadoria em 30/11/2026
+ *   claude-haiku-4-5   ativo, aposentadoria não antes de 15/10/2026
+ *   claude-sonnet-5    ativo, sem data anunciada  ← o padrão aqui
+ *
+ * ATENÇÃO: o .env pode sobrescrever isto. Se ANTHROPIC_MODEL_* apontar para
+ * sonnet-4-5, as chamadas param de funcionar em 30/11/2026 — a substituição
+ * recomendada é claude-sonnet-5-5.
+ * https://platform.claude.com/docs/en/about-claude/model-deprecations
  *
  * Se quiser o custo menor do Haiku na decomposição (a tarefa mais simples das
  * quatro: extrair estrutura de uma transcrição), use o snapshot datado, não o
